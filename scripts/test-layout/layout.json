@@ -412,6 +412,7 @@
     "cli-account-pin-drain.test.ts": "cli",
     "cli-account-pool-verbs.test.ts": "cli",
     "cli-account-threshold.test.ts": "cli",
+    "cli-account-alias-target.test.ts": "cli",
     "cli-account.test.ts": "cli",
     "cli-capabilities.test.ts": "cli",
     "cli-catalog-prewarm.test.ts": "cli",

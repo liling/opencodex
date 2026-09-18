@@ -8,7 +8,6 @@ import type { AccountDeps } from "../../src/cli/account-api";
  * got the same hedge as the healthy case. The route now reports the drain it evaluated.
  */
 const BASE_URL = "http://127.0.0.1:10100";
-
 function deps(
   putJson: Record<string, unknown>,
   thresholdJson: Record<string, unknown>,
@@ -26,6 +25,7 @@ function deps(
         return new Response(JSON.stringify(thresholdJson), { status: 200 });
       }
       if (path === "/api/codex-auth/accounts") {
+        // `use` resolves its argument against the pool before writing the pin.
         return Response.json({ accounts });
       }
       return new Response("{}", { status: 404 });
