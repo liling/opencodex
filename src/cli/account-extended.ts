@@ -1,5 +1,5 @@
 import { loadConfig } from "../config";
-import { isReservedCodexAccountWord, resolveCodexAccountTarget } from "./account-target";
+import { isReservedCodexAccountWord, reportCodexAccountTargetError, resolveCodexAccountTarget } from "./account-target";
 import { hasPassiveAccountQuota } from "../providers/quota";
 import { closeSync, openSync, readSync } from "node:fs";
 import {
@@ -650,7 +650,7 @@ export async function cmdClearCooldown(args: string[], deps: AccountDeps): Promi
   if (!baseUrl) return proxyUnreachable();
   const target = await resolveCodexAccountTarget(deps, baseUrl, requestedId);
   if ("networkDown" in target) return proxyUnreachable(target.transportError);
-  if ("error" in target) return usage(`Error: ${target.error}`);
+  if ("error" in target) return reportCodexAccountTargetError(target);
   const id = target.id;
   const response = await apiJson(deps, baseUrl, "POST", "/api/codex-auth/accounts/clear-cooldown", { id });
   if (response.status === 0) return proxyUnreachable(response.transportError);
@@ -723,7 +723,8 @@ export async function cmdPriority(args: string[], deps: AccountDeps): Promise<nu
   const target = await resolveCodexAccountTarget(deps, baseUrl, requestedId);
   if ("networkDown" in target) return proxyUnreachable(target.transportError);
   if ("error" in target) {
-    return usage(target.kind === "not_found" ? `Error: no ${name} account ${requestedId}` : `Error: ${target.error}`);
+    if (target.kind === "not_found" && priority === undefined) return usage(`Error: no ${name} account ${requestedId}`);
+    return reportCodexAccountTargetError(target);
   }
   const id = target.id;
 
@@ -794,7 +795,7 @@ export async function cmdPause(args: string[], deps: AccountDeps, paused: boolea
   if (!baseUrl) return proxyUnreachable();
   const target = await resolveCodexAccountTarget(deps, baseUrl, requestedId);
   if ("networkDown" in target) return proxyUnreachable(target.transportError);
-  if ("error" in target) return usage(`Error: ${target.error}`);
+  if ("error" in target) return reportCodexAccountTargetError(target);
   const id = target.id;
 
   const response = await apiJson(deps, baseUrl, "PUT", "/api/codex-auth/accounts/pause", { id, paused });
@@ -1023,14 +1024,14 @@ export async function cmdAlias(args: string[], deps: AccountDeps): Promise<numbe
   }
   const alias = requestedAlias === "-" ? "" : requestedAlias.trim();
   if (alias.length > 80 || /[\x00-\x1f\x7f]/.test(alias)) return usage("Error: alias must be at most 80 printable characters");
-  if (isReservedCodexAccountWord(alias)) return usage(`Error: "${alias}" is reserved for \`ocx account use\` and cannot be an alias`);
+  if (classified.type === "codex" && isReservedCodexAccountWord(alias)) return usage(`Error: "${alias}" is reserved for \`ocx account use\` and cannot be an alias`);
   const baseUrl = await resolveBaseUrl(deps);
   if (!baseUrl) return proxyUnreachable();
   let id = requestedId;
   if (classified.type === "codex") {
     const target = await resolveCodexAccountTarget(deps, baseUrl, requestedId);
     if ("networkDown" in target) return proxyUnreachable(target.transportError);
-    if ("error" in target) return usage(`Error: ${target.error}`);
+    if ("error" in target) return reportCodexAccountTargetError(target);
     id = target.id;
   }
   const path = classified.type === "codex"

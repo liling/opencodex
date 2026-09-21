@@ -144,7 +144,7 @@ Codex pool selection applies to the next request after clearing existing affinit
 
 ### `ocx account use <provider> <account-or-key-id|alias|main|auto> [--json]`
 
-`auto` は手動の選択を解除し、プールが自身の戦略で再び配置するようにします。Codex アカウントは id の代わりに `ocx account alias` で付けたエイリアスでも指定でき、`priority`、`pause`、`resume`、`clear-cooldown`、`remove`、`alias` でも同様です。`auto` は予約語で、エイリアスとしては扱われません。
+`auto` は手動の選択を解除し、プールが自身の戦略で再び配置するようにします。Codex アカウントは id の代わりに `ocx account alias` で付けたエイリアスでも指定でき、`priority`、`pause`、`resume`、`clear-cooldown`、`remove`、`alias` でも同様です。Codex アカウントでは `auto`、`main`、`__main__` は大文字・小文字を区別せず予約語として扱われるため、エイリアスとして設定できません。OAuth アカウントと API キーの表示名には従来のルールが適用されます。
 
 既存の Codex アカウント、OAuth アカウント、または API key を選びます。`openai` で `main` は Codex App ログインを
 選択します。Codex Pool の選択は process-local affinity を消去し、既存の表示タスクを含む次のリクエストから適用されます。プロキシ再起動や affinity eviction 後もタスクは未紐付けになり得ますが、処理中のリクエストは取得済みアカウントを維持します。この選択は Pool routing のみを制御し、Direct mode は caller-owned/native main credential を使い続けます。使用量ベースのプロアクティブ切り替え、401/403 再認証、429/retry-after cooldown、除外、出力前 429/402 の障害回復により、後で別の適格 Pool アカウントが選ばれる場合があります。これらの回復経路は使用量ベース切り替えが off でも有効です。アカウント変更後も OpenCodex は会話コンテキストを再生しますが、provider prompt cache は再ウォームアップが必要な場合があります。

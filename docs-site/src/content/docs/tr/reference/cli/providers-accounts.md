@@ -201,7 +201,7 @@ yine de 0 ile çıkar. `--json` şunu döndürür:
 
 ### `ocx account use <provider> <account-or-key-id|alias|main|auto> [--json]`
 
-`auto` elle yapılan seçimi temizler; havuz işi yeniden kendi stratejisiyle yerleştirir. Bir Codex hesabı, id yerine `ocx account alias` ile verilen takma adla da belirtilebilir; bu `priority`, `pause`, `resume`, `clear-cooldown`, `remove` ve `alias` için de geçerlidir. `auto` ayrılmış bir sözcüktür; takma ad olarak kullanılamaz.
+`auto` elle yapılan seçimi temizler; havuz işi yeniden kendi stratejisiyle yerleştirir. Bir Codex hesabı, id yerine `ocx account alias` ile verilen takma adla da belirtilebilir; bu `priority`, `pause`, `resume`, `clear-cooldown`, `remove` ve `alias` için de geçerlidir. Codex hesaplarında `auto`, `main` ve `__main__` büyük/küçük harf fark etmeksizin ayrılmış sözcüklerdir ve takma ad olarak atanamaz. OAuth hesaplarının ve API anahtarlarının görünen adları için mevcut kurallar geçerlidir.
 
 Mevcut bir Codex hesabını, OAuth hesabını veya API anahtarını seçer. `openai`
 için `main` Codex App girişini seçer. Bir Codex Havuzu seçimi süreç içi yerel

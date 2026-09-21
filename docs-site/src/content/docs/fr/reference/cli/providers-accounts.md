@@ -186,7 +186,7 @@ cet état et quitte toujours 0. `--json` renvoie :
 
 ### `ocx account use <provider> <account-or-key-id|alias|main|auto> [--json]`
 
-`auto` efface la sélection manuelle pour que le pool place à nouveau le travail selon sa propre stratégie. Un compte Codex peut être désigné par l'alias défini avec `ocx account alias` au lieu de son id ; cela vaut aussi pour `priority`, `pause`, `resume`, `clear-cooldown`, `remove` et `alias`. `auto` est réservé et ne peut pas servir d'alias.
+`auto` efface la sélection manuelle pour que le pool place à nouveau le travail selon sa propre stratégie. Un compte Codex peut être désigné par l'alias défini avec `ocx account alias` au lieu de son id ; cela vaut aussi pour `priority`, `pause`, `resume`, `clear-cooldown`, `remove` et `alias`. Pour les comptes Codex, `auto`, `main` et `__main__` sont réservés sans distinction de casse et ne peuvent pas être attribués comme alias. Les noms affichés des comptes OAuth et des clés API conservent leurs règles existantes.
 
 Sélectionne un compte Codex, un compte OAuth ou une clé API existant. Pour `openai`, `main` sélectionne la
 connexion Codex App. Une sélection en mode Codex Pool efface l'affinité locale du processus et s'applique à la requête suivante,

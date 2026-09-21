@@ -7,7 +7,7 @@
  * that still names one account; two accounts sharing a name is an error, not a guess.
  */
 import { MAIN_CODEX_ACCOUNT_ID } from "../codex/account-id";
-import { apiJson, fetchRows, type AccountDeps } from "./account-api";
+import { apiError, apiJson, fetchRows, type AccountDeps } from "./account-api";
 
 /** `ocx account use <provider> auto`: clear the manual selection instead of making one. */
 export const AUTO_ACCOUNT_ARGUMENT = "auto";
@@ -18,9 +18,15 @@ export type CodexAccountTarget =
   | { error: string; kind: "not_found" | "ambiguous" | "reserved" }
   | { networkDown: true; transportError?: string };
 
-/** `auto` names no account anywhere, so an alias cannot take it either. */
+/** Built-in selectors cannot be reused as Codex account aliases. */
 export function isReservedCodexAccountWord(value: string): boolean {
-  return value.toLowerCase() === AUTO_ACCOUNT_ARGUMENT;
+  const word = value.toLowerCase();
+  return word === AUTO_ACCOUNT_ARGUMENT || word === MAIN_ALIAS || word === MAIN_CODEX_ACCOUNT_ID;
+}
+
+/** Keep a local resolution miss consistent with the account API's not-found exit code. */
+export function reportCodexAccountTargetError(target: Extract<CodexAccountTarget, { error: string }>): number {
+  return apiError({ error: target.error }, target.error, target.kind === "not_found" ? 404 : 400);
 }
 
 export async function resolveCodexAccountTarget(
@@ -54,7 +60,7 @@ export async function resolveCodexAccountTarget(
 
 export type CodexUseTarget =
   | { accountId: string | null }
-  | { error: string }
+  | Extract<CodexAccountTarget, { error: string }>
   | { networkDown: true; transportError?: string };
 
 /** The `use` argument: `auto` clears the selection, everything else resolves like any other verb. */
@@ -66,7 +72,7 @@ export async function resolveCodexUseTarget(
   if (requested === AUTO_ACCOUNT_ARGUMENT) return { accountId: null };
   const target = await resolveCodexAccountTarget(deps, baseUrl, requested);
   if ("networkDown" in target) return target;
-  if ("error" in target) return { error: target.error };
+  if ("error" in target) return target;
   return { accountId: target.id };
 }
 

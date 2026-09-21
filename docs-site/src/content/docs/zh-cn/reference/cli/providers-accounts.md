@@ -159,7 +159,7 @@ OAuth 账号会显示为 `Account N`，而 plan/label 列会在 plan、屏蔽后
 
 ### `ocx account use <provider> <account-or-key-id|alias|main|auto> [--json]`
 
-`auto` 会清除手动选择，让 Pool 重新按自身策略分配工作。Codex 账号可以用 `ocx account alias` 设置的别名代替 id 来指定；`priority`、`pause`、`resume`、`clear-cooldown`、`remove` 和 `alias` 同样如此。`auto` 为保留字，不能用作别名。
+`auto` 会清除手动选择，让 Pool 重新按自身策略分配工作。Codex 账号可以用 `ocx account alias` 设置的别名代替 id 来指定；`priority`、`pause`、`resume`、`clear-cooldown`、`remove` 和 `alias` 同样如此。对于 Codex 账号，`auto`、`main` 和 `__main__` 为保留字（不区分大小写），不能设为别名。OAuth 账号和 API 密钥的显示名称仍遵循原有规则。
 
 选择已有的 Codex 账号、OAuth 账号或 API key。对 `openai` 而言，`main` 选择 Codex App 登录。
 Codex Pool 选择会清除进程本地 affinity，并从下一次请求开始生效，包括已有可见任务的请求；代理重启或 affinity eviction 后，任务也可能变为未绑定，但进行中的请求保留已捕获账号。此选择只控制 Pool routing；Direct mode 继续使用 caller-owned/native main credential。基于用量的主动切换、401/403 重新认证、429/retry-after cooldown、排除，以及输出前 429/402 故障恢复之后仍可能选择其他合格 Pool 账号。这些恢复路径在关闭基于用量的切换时仍然有效。账号变化后 OpenCodex 会重放对话上下文，但 provider prompt cache 可能需要重新预热。未知 provider 或 id 返回退出码 1。`--json` 返回：

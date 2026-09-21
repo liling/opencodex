@@ -1,6 +1,6 @@
 /** `ocx account` — list and switch provider credentials (issue #180). */
 import { loadConfig } from "../config";
-import { explainCodexUseOutcome, resolveCodexUseTarget } from "./account-target";
+import { explainCodexUseOutcome, reportCodexAccountTargetError, resolveCodexUseTarget } from "./account-target";
 import { providerCodexAccountMode } from "../providers/registry";
 import type { OcxConfig } from "../types";
 import {
@@ -317,10 +317,7 @@ async function cmdUse(rest: string[], deps: AccountDeps): Promise<number> {
   if (c.type === "codex") {
     const target = await resolveCodexUseTarget(deps, baseUrl, id);
     if ("networkDown" in target) return proxyUnreachable(target.transportError);
-    if ("error" in target) {
-      console.error(`Error: ${target.error}`);
-      return 1;
-    }
+    if ("error" in target) return reportCodexAccountTargetError(target);
     activeId = target.accountId;
     res = await apiJson(deps, baseUrl, "PUT", "/api/codex-auth/active", { accountId: activeId });
   } else if (c.type === "oauth") {

@@ -25,7 +25,7 @@ interface Harness {
   writes: () => Captured[];
 }
 
-function harness(): Harness {
+function harness(providers: Record<string, unknown> = {}): Harness {
   const requests: Captured[] = [];
   const state: Harness = {
     requests,
@@ -44,6 +44,7 @@ function harness(): Harness {
         authMode: "forward",
         codexAccountMode: "pool",
       },
+      ...providers,
     },
   }) as unknown as OcxConfig;
   const deps: AccountDeps = {
@@ -90,6 +91,71 @@ function harness(): Harness {
 }
 
 describe("ocx account: alias and auto as account arguments", () => {
+  test.each(["Main", "MAIN", "__MAIN__", "Auto", "AUTO"])("%s cannot shadow a reserved selector by case", async (reserved) => {
+    const h = harness();
+    const result = await h.run(["alias", "openai", "chatgpt_1", reserved]);
+    expect(result.code).toBe(1);
+    expect(h.requests).toHaveLength(0);
+  });
+
+  test.each([
+    ["use", "openai", "missing"],
+    ["priority", "openai", "missing", "first"],
+    ["pause", "openai", "missing"],
+    ["resume", "openai", "missing"],
+    ["clear-cooldown", "openai", "missing"],
+    ["alias", "openai", "missing", "work"],
+  ])("%s keeps exit code 4 for a missing account", async (...args) => {
+    const h = harness();
+    const result = await h.run(args);
+    expect(result.code).toBe(4);
+    expect(h.requests.every(request => request.method === "GET")).toBe(true);
+  });
+
+  test("priority reads and remove preserve their local existence-check exit code", async () => {
+    const h = harness();
+    expect((await h.run(["priority", "openai", "missing"])).code).toBe(1);
+    expect((await h.run(["remove", "openai", "missing", "--yes"])).code).toBe(1);
+    expect(h.requests.every(request => request.method === "GET")).toBe(true);
+  });
+
+  test.each(["main", "__main__"])("%s stays a main-login selector and cannot become a pool alias", async (reserved) => {
+    const h = harness();
+    const renamed = await h.run(["alias", "openai", "chatgpt_1", reserved]);
+
+    expect(renamed.code).toBe(1);
+    expect(renamed.stderr).toContain("reserved");
+    expect(h.requests).toHaveLength(0);
+
+    const selected = await h.run(["use", "openai", reserved]);
+    expect(selected.code).toBe(0);
+    expect(h.writes().at(-1)?.body).toEqual({ accountId: "__main__" });
+  });
+
+  test.each([
+    {
+      family: "OAuth",
+      provider: "anthropic",
+      config: { adapter: "anthropic", baseUrl: "https://api.anthropic.com", authMode: "oauth" },
+      path: "/api/oauth/accounts/alias",
+      body: { provider: "anthropic", accountId: "account_1", alias: "auto" },
+    },
+    {
+      family: "API-key",
+      provider: "openrouter",
+      config: { adapter: "openai-chat", baseUrl: "https://openrouter.ai/api/v1", authMode: "key" },
+      path: "/api/providers/keys/alias",
+      body: { name: "openrouter", id: "account_1", alias: "auto" },
+    },
+  ])("$family aliases keep accepting auto as a display name", async ({ provider, config, path, body }) => {
+    const h = harness({ [provider]: config });
+    const result = await h.run(["alias", provider, "account_1", "auto", "--json"]);
+
+    expect(result.code).toBe(0);
+    expect(JSON.parse(result.stdout)).toMatchObject({ ok: true, provider, alias: "auto" });
+    expect(h.requests).toEqual([{ method: "PUT", path, body }]);
+  });
+
   test("use resolves an alias to the stored account id", async () => {
     const h = harness();
     h.accounts.push({ id: "chatgpt_2", alias: "sub2", plan: "pro", quota: null });
@@ -110,14 +176,14 @@ describe("ocx account: alias and auto as account arguments", () => {
     expect(result.stderr).not.toContain("may override this pin");
   });
 
-  test("an alias matching nothing, or two accounts, exits one before any write", async () => {
+  test("missing and ambiguous aliases keep distinct errors before any write", async () => {
     const h = harness();
     h.accounts.push(
       { id: "chatgpt_2", alias: "Work", plan: "pro", quota: null },
       { id: "chatgpt_3", alias: "work", plan: "pro", quota: null },
     );
     const missing = await h.run(["use", "openai", "nope"]);
-    expect(missing.code).toBe(1);
+    expect(missing.code).toBe(4);
     expect(missing.stderr).toContain('Account not found: no Codex account has the id or alias "nope"');
     const ambiguous = await h.run(["use", "openai", "WORK"]);
     expect(ambiguous.code).toBe(1);
@@ -141,11 +207,11 @@ describe("ocx account: alias and auto as account arguments", () => {
     expect(h.requests.filter(r => r.path === "/api/codex-auth/accounts/pause").at(-1)?.body)
       .toEqual({ id: "chatgpt_2", paused: true });
     const missing = await h.run(["pause", "openai", "nope"]);
-    expect(missing.code).toBe(1);
+    expect(missing.code).toBe(4);
     expect(missing.stderr).toContain('Account not found: no Codex account has the id or alias "nope"');
   });
 
-  test("auto is reserved everywhere, and a broken account list falls back to the id as given", async () => {
+  test("auto is reserved for Codex pool verbs, and a broken account list falls back to the id as given", async () => {
     const h = harness();
     const rename = await h.run(["alias", "openai", "chatgpt_1", "auto"]);
     expect(rename.code).toBe(1);
