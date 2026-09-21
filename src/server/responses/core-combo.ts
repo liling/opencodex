@@ -462,7 +462,7 @@ export async function executeComboResponses(
   }
   let jevDecision: JevDecision | undefined;
   if (combo.strategy === "jev") {
-    const choices = eligibleJevComboChoices(config, comboId, targetEligible, initialNow);
+    const choices = eligibleJevComboChoices(config, comboId, targetEligible, Date.now());
     const first = choices[0];
     if (!first) return comboUnavailable(comboId);
     const resolvedFailOpenEffort = resolveEffortAtOrBelow(
@@ -593,7 +593,19 @@ export async function executeComboResponses(
       combo.reasoningEffortMode,
       initialJevDecision !== undefined && initialJevDecision.effort !== null ? "force" : combo.defaultEffortMode,
     );
-    if (initialJevDecision) delete childBody.service_tier;
+    if (initialJevDecision) {
+      delete childBody.service_tier;
+      if (initialJevDecision.effort !== null) {
+        const childReasoning = childBody.reasoning;
+        const preservedReasoning = childReasoning && typeof childReasoning === "object" && !Array.isArray(childReasoning)
+          ? childReasoning as Record<string, unknown>
+          : {};
+        childBody.reasoning = { ...preservedReasoning, effort: initialJevDecision.effort };
+        delete childBody.reasoning_effort;
+        delete childBody.thinking_budget;
+        delete childBody.thinking;
+      }
+    }
     const childHeaders = buildComboChildHeaders(req.headers);
     const childRequest = new Request(req.url, {
       method: req.method,

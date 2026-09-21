@@ -190,6 +190,32 @@ describe("JEV Combo runtime", () => {
     expect(models.some(model => model.provider === "jev")).toBeFalse();
   });
 
+  test("replaces caller sentinel efforts with JEV's selected effort", async () => {
+    for (const sentinel of ["none", "minimal"]) {
+      const config = makeConfig({ jevFetch: choiceFetch("sol/gpt-5.6-sol:high") });
+      const childBodies: Record<string, unknown>[] = [];
+
+      const response = await execute(config, body => {
+        childBodies.push(body);
+        return success(String(body.model));
+      }, {
+        reasoning: { effort: sentinel, summary: "auto" },
+        reasoning_effort: sentinel,
+        thinking_budget: 8_000,
+        thinking: { type: "enabled", budget_tokens: 8_000 },
+      });
+
+      expect(response.status).toBe(200);
+      expect(childBodies).toEqual([expect.objectContaining({
+        model: "sol/gpt-5.6-sol",
+        reasoning: { effort: "high", summary: "auto" },
+      })]);
+      expect(childBodies[0]).not.toHaveProperty("reasoning_effort");
+      expect(childBodies[0]).not.toHaveProperty("thinking_budget");
+      expect(childBodies[0]).not.toHaveProperty("thinking");
+    }
+  });
+
   test("fails open to the first eligible target at medium without requiring a Combo default", async () => {
     delete process.env.TYPESAFE_API_KEY;
     delete process.env.JEV_API_KEY;
@@ -316,6 +342,36 @@ describe("JEV Combo runtime", () => {
       "sol/gpt-5.6-sol:high",
       "sol/gpt-5.6-sol:xhigh",
       "sol/gpt-5.6-sol:max",
+    ]);
+  });
+
+  test("re-enumerates JEV choices after waiting for a cooldown to expire", async () => {
+    const jevRequests: Array<Record<string, unknown>> = [];
+    const config = makeConfig({
+      jevFetch: choiceFetch("astra/gpt-6-astra:medium", jevRequests),
+    });
+    config.combos!.auto!.waitForCooldownMs = 1_000;
+    const cooledAt = Date.now();
+    for (const target of targetRows) {
+      coolComboTarget("auto", target, { now: cooledAt, cooldownMs: 80 });
+    }
+    const childBodies: Record<string, unknown>[] = [];
+
+    const response = await execute(config, body => {
+      childBodies.push(body);
+      return success(String(body.model));
+    });
+
+    expect(response.status).toBe(200);
+    expect(jevRequests).toHaveLength(1);
+    expect(childBodies[0]?.model).toBe("astra/gpt-6-astra");
+    const criteria = (jevRequests[0]?.questions as {
+      route: { criteria: Record<string, { target: string }> };
+    }).route.criteria;
+    expect([...new Set(Object.values(criteria).map(option => option.target))]).toEqual([
+      "astra/gpt-6-astra",
+      "sol/gpt-5.6-sol",
+      "luna/gpt-5.6-luna",
     ]);
   });
 

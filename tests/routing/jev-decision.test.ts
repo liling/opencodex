@@ -44,6 +44,31 @@ describe("JEV bounded decision state", () => {
     expect(state.step).toEqual({ type: "user_turn" });
   });
 
+  test("removes a protected envelope whose closing tag falls outside the bounded task sample", () => {
+    const privateEnvelope = `<environment_context>PRIVATE_MACHINE_STATE${"x".repeat(250_000)}</environment_context>`;
+    const state = buildJevState({ input: `${privateEnvelope}${"u".repeat(250_000)}` }) as {
+      task: string;
+    };
+
+    expect(state.task).toHaveLength(500);
+    expect(state.task.startsWith("u".repeat(320))).toBeTrue();
+    expect(state.task.endsWith("u".repeat(171))).toBeTrue();
+    expect(state.task).not.toContain("PRIVATE_MACHINE_STATE");
+    expect(state.task).not.toContain("environment_context");
+  });
+
+  test("samples a large task containing harmless markup without per-character scanning", () => {
+    const input = `${"x".repeat(10_000_000)}<${"x".repeat(10_000_000)}`;
+    const startedAt = performance.now();
+
+    const state = buildJevState({ input }) as { task: string };
+
+    expect(performance.now() - startedAt).toBeLessThan(200);
+    expect(state.task).toHaveLength(500);
+    expect(state.task.startsWith("x".repeat(320))).toBeTrue();
+    expect(state.task.endsWith("x".repeat(173))).toBeTrue();
+  });
+
   test("captures only bounded recent assistant and tool evidence without arguments or image data", () => {
     const state = buildJevState({
       input: [
@@ -369,6 +394,70 @@ describe("JEV decision client", () => {
     });
 
     expect(decision).toMatchObject({ ...fallback, gate: "no_state" });
+    expect(calls).toBe(0);
+  });
+
+  test("fails open before TypeSafe when the serialized decision request is too large", async () => {
+    const largeCandidates: JevCandidate[] = Array.from({ length: 24 }, (_, index) => {
+      const provider = `provider-${index}-${"p".repeat(110)}`;
+      const model = `model-${index}-${"m".repeat(110)}`;
+      return {
+        key: `${provider}/${model}`,
+        provider,
+        model,
+        reasoningEfforts: ["low", "medium", "high", "xhigh", "max", "ultra"],
+      };
+    });
+    const largeFallback = { targetKey: largeCandidates[0]!.key, effort: "medium" as const };
+    let calls = 0;
+    const post = (async () => {
+      calls += 1;
+      return Response.json(validPayload);
+    }) as JevPost;
+
+    const decision = await resolveJevDecision({
+      body: decisionBody,
+      candidates: largeCandidates,
+      fallback: largeFallback,
+      config: jevConfig("secret"),
+      post,
+    });
+
+    expect(decision).toMatchObject({ ...largeFallback, gate: "invalid" });
+    expect(calls).toBe(0);
+  });
+
+  test("bounds candidate count and identifier length before building a decision request", async () => {
+    const tooMany: JevCandidate[] = Array.from({ length: 65 }, (_, index) => ({
+      key: `p/m-${index}`,
+      provider: "p",
+      model: `m-${index}`,
+      reasoningEfforts: ["low"],
+    }));
+    const longModel = "m".repeat(513);
+    const tooLong: JevCandidate[] = [{
+      key: `p/${longModel}`,
+      provider: "p",
+      model: longModel,
+      reasoningEfforts: ["low"],
+    }];
+    let calls = 0;
+    const post = (async () => {
+      calls += 1;
+      return Response.json(validPayload);
+    }) as JevPost;
+
+    for (const boundedCandidates of [tooMany, tooLong]) {
+      const boundedFallback = { targetKey: boundedCandidates[0]!.key, effort: "low" as const };
+      const decision = await resolveJevDecision({
+        body: decisionBody,
+        candidates: boundedCandidates,
+        fallback: boundedFallback,
+        config: jevConfig("secret"),
+        post,
+      });
+      expect(decision).toMatchObject({ ...boundedFallback, gate: "invalid" });
+    }
     expect(calls).toBe(0);
   });
 

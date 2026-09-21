@@ -12,6 +12,9 @@ export const JEV_API_URL = "https://api.typesafe.ai/v1/systemone";
 export const JEV_MODEL = "jev-latest";
 
 const JEV_TIMEOUT_MS = 4_000;
+const JEV_MAX_CANDIDATES = 64;
+const JEV_MAX_CANDIDATE_FIELD_CHARS = 512;
+const JEV_MAX_REQUEST_BYTES = 65_536;
 const JEV_MAX_RESPONSE_BYTES = 65_536;
 const JEV_OUTBOUND_DEPENDENCIES = {
   isCanonicalUrl: (name: string, url: string) => name === JEV_PROVIDER_ID && url === JEV_API_URL,
@@ -24,7 +27,7 @@ const TASK_TAIL_CHARS = TASK_CHARS - TASK_HEAD_CHARS - TASK_CLIP_MARK.length;
 const ASSISTANT_TAIL_CHARS = 240;
 const TOOL_OUTPUT_TAIL_CHARS = 520;
 const TOOL_NAME_CHARS = 160;
-const ENVELOPE_SCAN_CHARS = 200_000;
+const VISIBLE_TEXT_CHUNK_CHARS = 16_384;
 
 const ENVELOPE_TAGS = [
   "codex_internal_context",
@@ -40,6 +43,7 @@ const ENVELOPE_TAGS = [
   "permissions instructions",
   "memory_instructions",
 ].join("|");
+const ENVELOPE_TAG_PATTERN = new RegExp(`<(/?)(${ENVELOPE_TAGS})(?:\\s[^<>]*)?>`, "g");
 
 const KNOWN_MODEL_PROFILES: Record<string, string> = {
   "gpt-5.6-luna": "Lower-capacity, cost-optimized member of GPT-5.6.",
@@ -141,20 +145,128 @@ function outputText(output: unknown): string {
   return "";
 }
 
-function stripEnvelopes(text: string): string {
-  const scanned = text.length <= ENVELOPE_SCAN_CHARS
-    ? text
-    : `${text.slice(0, ENVELOPE_SCAN_CHARS)}\n${text.slice(-ENVELOPE_SCAN_CHARS)}`;
-  const goal = /<codex_internal_context(?:\s[^<>]*)?>([\s\S]*?)<\/codex_internal_context\s*>/.exec(scanned)?.[1]?.trim() ?? "";
-  const envelopePattern = new RegExp(`<(${ENVELOPE_TAGS})(?:\\s[^<>]*)?>[\\s\\S]*?<\\/\\1\\s*>`, "g");
-  const stripped = scanned.replace(envelopePattern, "\n").trim();
-  return stripped || goal;
+interface BoundedTextSample {
+  length: number;
+  head: string;
+  tail: string;
+}
+
+interface TrimmedTextCollector {
+  sample: BoundedTextSample;
+  pendingWhitespace: BoundedTextSample;
+}
+
+function emptyTextSample(): BoundedTextSample {
+  return { length: 0, head: "", tail: "" };
+}
+
+function appendSampleRange(
+  sample: BoundedTextSample,
+  source: string,
+  start: number,
+  end: number,
+): void {
+  const length = end - start;
+  if (length <= 0) return;
+  const headRemaining = Math.max(0, TASK_CHARS - sample.head.length);
+  if (headRemaining > 0) sample.head += source.slice(start, Math.min(end, start + headRemaining));
+  sample.tail = length >= TASK_TAIL_CHARS
+    ? source.slice(end - TASK_TAIL_CHARS, end)
+    : `${sample.tail}${source.slice(start, end)}`.slice(-TASK_TAIL_CHARS);
+  sample.length += length;
+}
+
+function appendSample(sample: BoundedTextSample, addition: BoundedTextSample): void {
+  if (addition.length === 0) return;
+  const headRemaining = Math.max(0, TASK_CHARS - sample.head.length);
+  if (headRemaining > 0) sample.head += addition.head.slice(0, headRemaining);
+  sample.tail = addition.length >= TASK_TAIL_CHARS
+    ? addition.tail
+    : `${sample.tail}${addition.head.slice(0, addition.length)}`.slice(-TASK_TAIL_CHARS);
+  sample.length += addition.length;
+}
+
+function appendTrimmedRange(
+  collector: TrimmedTextCollector,
+  source: string,
+  start: number,
+  end: number,
+): void {
+  for (let chunkStart = start; chunkStart < end; chunkStart += VISIBLE_TEXT_CHUNK_CHARS) {
+    const chunkEnd = Math.min(end, chunkStart + VISIBLE_TEXT_CHUNK_CHARS);
+    let contentStart = chunkStart;
+    if (collector.sample.length === 0) {
+      const leadingWhitespace = /^\s*/u.exec(source.slice(chunkStart, chunkEnd))?.[0].length ?? 0;
+      contentStart += leadingWhitespace;
+      if (contentStart === chunkEnd) continue;
+    }
+    const trailingWhitespace = /\s*$/u.exec(source.slice(contentStart, chunkEnd))?.[0].length ?? 0;
+    const contentEnd = chunkEnd - trailingWhitespace;
+    if (contentEnd > contentStart) {
+      appendSample(collector.sample, collector.pendingWhitespace);
+      collector.pendingWhitespace = emptyTextSample();
+      appendSampleRange(collector.sample, source, contentStart, contentEnd);
+    }
+    if (contentEnd < chunkEnd && collector.sample.length > 0) {
+      appendSampleRange(collector.pendingWhitespace, source, contentEnd, chunkEnd);
+    }
+  }
+}
+
+function sampledTask(sample: BoundedTextSample): string {
+  if (sample.length <= TASK_CHARS) return sample.head.slice(0, sample.length);
+  return `${sample.head.slice(0, TASK_HEAD_CHARS)}${TASK_CLIP_MARK}${sample.tail}`;
 }
 
 function clipTask(text: string): string {
   const trimmed = text.trim();
   if (trimmed.length <= TASK_CHARS) return trimmed;
   return `${trimmed.slice(0, TASK_HEAD_CHARS)}${TASK_CLIP_MARK}${trimmed.slice(-TASK_TAIL_CHARS)}`;
+}
+
+function taskWithoutProtectedEnvelopes(text: string): string {
+  if (!text.includes("<")) return clipTask(text);
+  const visible: TrimmedTextCollector = {
+    sample: emptyTextSample(),
+    pendingWhitespace: emptyTextSample(),
+  };
+  const stack: string[] = [];
+  let cursor = 0;
+  let goal: TrimmedTextCollector | undefined;
+  let goalDepth: number | undefined;
+  let completedGoal: BoundedTextSample | undefined;
+  ENVELOPE_TAG_PATTERN.lastIndex = 0;
+
+  for (let match = ENVELOPE_TAG_PATTERN.exec(text); match; match = ENVELOPE_TAG_PATTERN.exec(text)) {
+    const tag = match[2]!;
+    if (stack.length === 0) appendTrimmedRange(visible, text, cursor, match.index);
+    if (goal && goalDepth !== undefined && stack.length === goalDepth + 1) {
+      appendTrimmedRange(goal, text, cursor, match.index);
+    }
+
+    if (match[1] === "/") {
+      const matchingDepth = stack.lastIndexOf(tag);
+      if (matchingDepth >= 0) {
+        if (goal && goalDepth === matchingDepth && tag === "codex_internal_context") {
+          completedGoal = goal.sample;
+          goal = undefined;
+          goalDepth = undefined;
+        }
+        stack.length = matchingDepth;
+      }
+    } else {
+      if (stack.length === 0) appendTrimmedRange(visible, "\n", 0, 1);
+      if (!completedGoal && !goal && tag === "codex_internal_context") {
+        goal = { sample: emptyTextSample(), pendingWhitespace: emptyTextSample() };
+        goalDepth = stack.length;
+      }
+      stack.push(tag);
+    }
+    cursor = ENVELOPE_TAG_PATTERN.lastIndex;
+  }
+
+  if (stack.length === 0) appendTrimmedRange(visible, text, cursor, text.length);
+  return sampledTask(visible.sample) || sampledTask(completedGoal ?? emptyTextSample());
 }
 
 function hasImageContent(item: Record<string, unknown>): boolean {
@@ -171,7 +283,7 @@ export function buildJevState(body: unknown): Record<string, unknown> {
   const step: Record<string, unknown> = { type: "other" };
 
   if (typeof input === "string") {
-    task = clipTask(stripEnvelopes(input));
+    task = taskWithoutProtectedEnvelopes(input);
     step.type = "user_turn";
   } else if (Array.isArray(input)) {
     for (const raw of input.slice(-6)) {
@@ -182,7 +294,7 @@ export function buildJevState(body: unknown): Record<string, unknown> {
     for (let index = input.length - 1; index >= 0 && (!task || !previousAssistant); index -= 1) {
       const raw = input[index];
       if (!isRecord(raw)) continue;
-      if (!task && raw.role === "user") task = clipTask(stripEnvelopes(contentText(raw.content)));
+      if (!task && raw.role === "user") task = taskWithoutProtectedEnvelopes(contentText(raw.content));
       if (!previousAssistant && raw.role === "assistant") previousAssistant = contentText(raw.content).trim();
     }
 
@@ -243,6 +355,12 @@ function candidateOptions(candidates: readonly JevCandidate[]): Map<string, JevR
     }
   }
   return options;
+}
+
+function candidatesFitRequestBounds(candidates: readonly JevCandidate[]): boolean {
+  if (candidates.length > JEV_MAX_CANDIDATES) return false;
+  return candidates.every(candidate => [candidate.key, candidate.provider, candidate.model]
+    .every(value => value.length > 0 && value.length <= JEV_MAX_CANDIDATE_FIELD_CHARS));
 }
 
 function modelProfile(candidate: JevCandidate): string {
@@ -369,6 +487,7 @@ export async function resolveJevDecision(options: ResolveJevDecisionOptions): Pr
 
   if (options.signal?.aborted) throw options.signal.reason;
   if (options.candidates.length === 0) return failed("no_choices");
+  if (!candidatesFitRequestBounds(options.candidates)) return failed("invalid");
 
   const configured = options.config.providers[JEV_PROVIDER_ID];
   if (configured?.disabled === true) return failed("missing_key");
@@ -389,6 +508,7 @@ export async function resolveJevDecision(options: ResolveJevDecisionOptions): Pr
       state,
       questions: buildJevRouteQuestion(options.candidates),
     });
+    if (new TextEncoder().encode(requestBody).byteLength > JEV_MAX_REQUEST_BYTES) return failed("invalid");
   } catch {
     return failed("invalid");
   }
