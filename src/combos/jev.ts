@@ -226,6 +226,9 @@ function clipTask(text: string): string {
 
 function taskWithoutProtectedEnvelopes(text: string): string {
   if (!text.includes("<")) return clipTask(text);
+  ENVELOPE_TAG_PATTERN.lastIndex = 0;
+  let match = ENVELOPE_TAG_PATTERN.exec(text);
+  if (!match) return clipTask(text);
   const visible: TrimmedTextCollector = {
     sample: emptyTextSample(),
     pendingWhitespace: emptyTextSample(),
@@ -235,9 +238,8 @@ function taskWithoutProtectedEnvelopes(text: string): string {
   let goal: TrimmedTextCollector | undefined;
   let goalDepth: number | undefined;
   let completedGoal: BoundedTextSample | undefined;
-  ENVELOPE_TAG_PATTERN.lastIndex = 0;
 
-  for (let match = ENVELOPE_TAG_PATTERN.exec(text); match; match = ENVELOPE_TAG_PATTERN.exec(text)) {
+  for (; match; match = ENVELOPE_TAG_PATTERN.exec(text)) {
     const tag = match[2]!;
     if (stack.length === 0) appendTrimmedRange(visible, text, cursor, match.index);
     if (goal && goalDepth !== undefined && stack.length === goalDepth + 1) {
