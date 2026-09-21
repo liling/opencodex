@@ -280,7 +280,9 @@ The decision state is deliberately bounded: up to 500 characters of the current 
 240-character previous-assistant tail, a 520-character latest-tool-output tail, the tool name, and
 boolean image/tool signals may be sent to TypeSafe. It excludes the JEV credential, request headers,
 raw image bytes, tool arguments, encrypted reasoning, and full conversation history. Do not select
-`jev-auto` for content you do not want TypeSafe to process. Logs contain only the selected
+`jev-auto` for content you do not want TypeSafe to process. Recognized OpenCodex machine-context
+envelopes are removed from all three text samples, but ordinary assistant and tool-output text is
+not a secret scanner and may still contain sensitive content. Logs contain only the selected
 target/effort, a coarse decision gate, latency, optional confidence/probability, and numeric usage.
 Automated tests use mocked TypeSafe responses plus a no-key fail-open smoke; a live TypeSafe decision
 requires an operator-supplied key and is not run implicitly.

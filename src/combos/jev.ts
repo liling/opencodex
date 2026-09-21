@@ -271,6 +271,67 @@ function taskWithoutProtectedEnvelopes(text: string): string {
   return sampledTask(visible.sample) || sampledTask(completedGoal ?? emptyTextSample());
 }
 
+function appendBoundedTail(tail: string, source: string, start: number, end: number, limit: number): string {
+  if (end <= start) return tail;
+  const boundedStart = Math.max(start, end - limit);
+  return `${tail}${source.slice(boundedStart, end)}`.slice(-limit);
+}
+
+function tailWithoutProtectedEnvelopes(text: string, limit: number): string {
+  if (!text.includes("<")) return text.trim().slice(-limit);
+  ENVELOPE_TAG_PATTERN.lastIndex = 0;
+  let match = ENVELOPE_TAG_PATTERN.exec(text);
+  if (!match) return text.trim().slice(-limit);
+
+  let tail = "";
+  let pendingWhitespace = "";
+  let hasContent = false;
+  const stack: string[] = [];
+  let cursor = 0;
+  const appendVisibleRange = (source: string, start: number, end: number): void => {
+    for (let chunkStart = start; chunkStart < end; chunkStart += VISIBLE_TEXT_CHUNK_CHARS) {
+      const chunkEnd = Math.min(end, chunkStart + VISIBLE_TEXT_CHUNK_CHARS);
+      let contentStart = chunkStart;
+      if (!hasContent) {
+        contentStart += /^\s*/u.exec(source.slice(chunkStart, chunkEnd))?.[0].length ?? 0;
+        if (contentStart === chunkEnd) continue;
+      }
+      const trailingWhitespace = /\s*$/u.exec(source.slice(contentStart, chunkEnd))?.[0].length ?? 0;
+      const contentEnd = chunkEnd - trailingWhitespace;
+      if (contentEnd > contentStart) {
+        tail = appendBoundedTail(tail, pendingWhitespace, 0, pendingWhitespace.length, limit);
+        pendingWhitespace = "";
+        tail = appendBoundedTail(tail, source, contentStart, contentEnd, limit);
+        hasContent = true;
+      }
+      if (contentEnd < chunkEnd && hasContent) {
+        pendingWhitespace = appendBoundedTail(
+          pendingWhitespace,
+          source,
+          contentEnd,
+          chunkEnd,
+          limit,
+        );
+      }
+    }
+  };
+
+  for (; match; match = ENVELOPE_TAG_PATTERN.exec(text)) {
+    const tag = match[2]!;
+    if (stack.length === 0) appendVisibleRange(text, cursor, match.index);
+    if (match[1] === "/") {
+      const matchingDepth = stack.lastIndexOf(tag);
+      if (matchingDepth >= 0) stack.length = matchingDepth;
+    } else {
+      if (stack.length === 0) appendVisibleRange("\n", 0, 1);
+      stack.push(tag);
+    }
+    cursor = ENVELOPE_TAG_PATTERN.lastIndex;
+  }
+  if (stack.length === 0) appendVisibleRange(text, cursor, text.length);
+  return tail;
+}
+
 function hasImageContent(item: Record<string, unknown>): boolean {
   if (!Array.isArray(item.content)) return false;
   return item.content.some(part => isRecord(part) && (part.type === "input_image" || part.type === "image_url"));
@@ -297,14 +358,16 @@ export function buildJevState(body: unknown): Record<string, unknown> {
       const raw = input[index];
       if (!isRecord(raw)) continue;
       if (!task && raw.role === "user") task = taskWithoutProtectedEnvelopes(contentText(raw.content));
-      if (!previousAssistant && raw.role === "assistant") previousAssistant = contentText(raw.content).trim();
+      if (!previousAssistant && raw.role === "assistant") {
+        previousAssistant = tailWithoutProtectedEnvelopes(contentText(raw.content), ASSISTANT_TAIL_CHARS);
+      }
     }
 
     const last = input.at(-1);
     if (isRecord(last)
       && (last.type === "function_call_output" || last.type === "custom_tool_call_output")) {
       step.type = "tool_step";
-      step.last_tool_output_tail = outputText(last.output).trim().slice(-TOOL_OUTPUT_TAIL_CHARS);
+      step.last_tool_output_tail = tailWithoutProtectedEnvelopes(outputText(last.output), TOOL_OUTPUT_TAIL_CHARS);
       const callId = typeof last.call_id === "string" ? last.call_id : "";
       if (callId) {
         for (let index = input.length - 2; index >= 0; index -= 1) {

@@ -115,6 +115,30 @@ describe("JEV bounded decision state", () => {
     expect(JSON.stringify(state)).not.toContain("TOP_SECRET_IMAGE");
   });
 
+  test("removes protected machine envelopes from assistant and tool-output tails", () => {
+    const state = buildJevState({
+      input: [
+        { role: "user", content: "Continue from the latest result." },
+        {
+          role: "assistant",
+          content: "Visible before<environment_context>ASSISTANT_MACHINE_SECRET</environment_context>visible after",
+        },
+        {
+          type: "custom_tool_call_output",
+          output: "Tool before<permissions instructions>TOOL_MACHINE_SECRET</permissions instructions>tool after",
+        },
+      ],
+    }) as {
+      previous_assistant: string;
+      step: { last_tool_output_tail: string };
+    };
+
+    expect(state.previous_assistant).toBe("Visible before\nvisible after");
+    expect(state.step.last_tool_output_tail).toBe("Tool before\ntool after");
+    expect(JSON.stringify(state)).not.toContain("ASSISTANT_MACHINE_SECRET");
+    expect(JSON.stringify(state)).not.toContain("TOOL_MACHINE_SECRET");
+  });
+
   test("salvages an envelope-only active goal but drops catalog-only envelopes", () => {
     expect(buildJevState({
       input: '<codex_internal_context source="goal">Keep implementing JEV.</codex_internal_context>',
