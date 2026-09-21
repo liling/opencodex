@@ -11,6 +11,7 @@ import {
   groupCombos,
   intersectComboEfforts,
   isValidComboId,
+  jevAutoDraft,
   parseComboList,
   providerQuotaStatesFromReports,
   nextProviderQuotaStateExpiration,
@@ -104,6 +105,56 @@ function validate(
 }
 
 describe("combo-workspace-data", () => {
+  test("parse and PUT preserve the JEV strategy", () => {
+    const parsed = parseComboList({
+      combos: [{
+        id: "jev-auto",
+        alias: "jev-auto",
+        strategy: "jev",
+        reasoningEffortMode: "adaptive",
+        targets: [{ provider: "openai", model: "gpt-6-astra" }],
+      }],
+    })[0]!;
+
+    expect(parsed.strategy).toBe("jev");
+    expect(toPutBody(parsed)).toEqual({
+      id: "jev-auto",
+      combo: {
+        targets: [{ provider: "openai", model: "gpt-6-astra" }],
+        strategy: "jev",
+        defaultEffort: null,
+        reasoningEffortMode: "adaptive",
+        alias: "jev-auto",
+      },
+    });
+  });
+
+  test("JEV Auto template uses the available Astra, Sol, and Luna targets in fail-open order", () => {
+    const draft = jevAutoDraft([
+      { provider: "openai", id: "gpt-5.6-luna", reasoningEfforts: ["low", "medium"] },
+      { provider: "anthropic", id: "claude-sonnet-5" },
+      { provider: "openai", id: "gpt-6-astra", reasoningEfforts: ["medium", "high"] },
+      { provider: "openai", id: "gpt-5.6-sol", reasoningEfforts: ["low", "medium", "high"] },
+    ]);
+
+    expect(draft).toMatchObject({
+      id: "jev-auto",
+      model: "jev-auto",
+      alias: "jev-auto",
+      strategy: "jev",
+      defaultEffort: null,
+      reasoningEffortMode: "adaptive",
+    });
+    expect(draft.targets.map(({ provider, model }) => ({ provider, model }))).toEqual([
+      { provider: "openai", model: "gpt-6-astra" },
+      { provider: "openai", model: "gpt-5.6-sol" },
+      { provider: "openai", model: "gpt-5.6-luna" },
+    ]);
+    expect(draft.targets.every(target => typeof target.clientKey === "string")).toBe(true);
+    draft.targets.splice(1, 1);
+    expect(draft.targets.map(target => target.model)).toEqual(["gpt-6-astra", "gpt-5.6-luna"]);
+  });
+
   test("parseComboList accepts normalized GET rows and skips malformed entries", () => {
     const items = parseComboList({
       combos: [

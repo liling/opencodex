@@ -9,7 +9,7 @@ import type { TKey } from "./i18n/shared";
 
 export { SUPPORTED_NATIVE_OPENAI_SLUGS };
 
-export type ComboStrategy = "failover" | "round-robin" | "random" | "least-used" | "reset-window";
+export type ComboStrategy = "failover" | "round-robin" | "random" | "least-used" | "reset-window" | "jev";
 export type ComboEffort = "low" | "medium" | "high" | "xhigh" | "max" | "ultra";
 
 export const COMBO_EFFORTS: ComboEffort[] = ["low", "medium", "high", "xhigh", "max", "ultra"];
@@ -20,6 +20,7 @@ export const COMBO_STRATEGIES: readonly ComboStrategy[] = [
   "random",
   "least-used",
   "reset-window",
+  "jev",
 ] as const;
 
 export const COMBO_STRATEGY_LABEL_KEYS: Record<ComboStrategy, TKey> = {
@@ -28,6 +29,7 @@ export const COMBO_STRATEGY_LABEL_KEYS: Record<ComboStrategy, TKey> = {
   random: "cws.strategy.random",
   "least-used": "cws.strategy.leastUsed",
   "reset-window": "cws.strategy.resetWindow",
+  jev: "cws.strategy.jev",
 };
 
 export const COMBO_STRATEGY_HINT_KEYS: Record<ComboStrategy, TKey> = {
@@ -36,6 +38,7 @@ export const COMBO_STRATEGY_HINT_KEYS: Record<ComboStrategy, TKey> = {
   random: "cws.strategy.randomHint",
   "least-used": "cws.strategy.leastUsedHint",
   "reset-window": "cws.strategy.resetWindowHint",
+  jev: "cws.strategy.jevHint",
 };
 
 export const COMBO_TARGETS_HINT_KEYS: Record<ComboStrategy, TKey> = {
@@ -44,6 +47,7 @@ export const COMBO_TARGETS_HINT_KEYS: Record<ComboStrategy, TKey> = {
   random: "cws.targets.randomHint",
   "least-used": "cws.targets.leastUsedHint",
   "reset-window": "cws.targets.resetWindowHint",
+  jev: "cws.targets.jevHint",
 };
 
 const COMBO_STRATEGY_SET = new Set<string>(COMBO_STRATEGIES);
@@ -553,5 +557,30 @@ export function emptyDraft(id = ""): ComboItem {
     imageInput: "auto",
     reasoningEffortMode: "strict",
     targets: [newComboTarget()],
+  };
+}
+
+const JEV_AUTO_MODEL_IDS = ["gpt-6-astra", "gpt-5.6-sol", "gpt-5.6-luna"] as const;
+
+/** Build the opt-in JEV Combo template from models that are available right now. */
+export function jevAutoDraft(
+  models: readonly { provider: string; id: string }[],
+): ComboItem {
+  const targets = JEV_AUTO_MODEL_IDS.flatMap((id) => {
+    const model = models.find((candidate) => candidate.id === id);
+    return model ? [newComboTarget({ provider: model.provider, model: model.id })] : [];
+  });
+  return {
+    id: "jev-auto",
+    model: "jev-auto",
+    alias: "jev-auto",
+    nativeAlias: false,
+    displayName: null,
+    strategy: "jev",
+    stickyLimit: 1,
+    defaultEffort: null,
+    imageInput: "auto",
+    reasoningEffortMode: "adaptive",
+    targets: targets.length > 0 ? targets : [newComboTarget()],
   };
 }

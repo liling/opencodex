@@ -69,6 +69,8 @@ export const DASHBOARD_TAB_HASHES = ["dashboard/providers", "dashboard/models"] 
  * uses for Overview and Logs uses for the log list.
  */
 export const MODELS_TAB_HASHES = ["models/combos", "models/routing", "models/compatibility"] as const;
+/** Action deep link that opens the editable JEV Auto template in the Combos tab. */
+export const JEV_AUTO_CREATE_HASH = "models/combos/jev-auto";
 
 /**
  * `#dashboard/update` is an action deep link, not a tab: the sidebar update button uses
@@ -111,7 +113,10 @@ export function hashBelongsToPage(rawHash: string, page: Page): boolean {
   return rawHash === page
     || (page === "logs" && rawHash === "logs/debug")
     || (page === "codex-set" && rawHash === "codex-set/prompt")
-    || (page === "models" && (MODELS_TAB_HASHES as readonly string[]).includes(rawHash))
+    || (page === "models" && (
+      (MODELS_TAB_HASHES as readonly string[]).includes(rawHash)
+      || rawHash === JEV_AUTO_CREATE_HASH
+    ))
     || (page === "dashboard"
       && (rawHash === DASHBOARD_UPDATE_HASH || (DASHBOARD_TAB_HASHES as readonly string[]).includes(rawHash)))
     || (page === "integrations"

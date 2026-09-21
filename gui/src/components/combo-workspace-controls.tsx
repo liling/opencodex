@@ -160,6 +160,16 @@ export function TargetEditor({
   const provs = enabledProviders(providers);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [overIndex, setOverIndex] = useState<number | null>(null);
+  const failOpenIndex = strategy === "jev"
+    ? targets.findIndex((target) => {
+        const provider = providers.find(candidate => candidate.name === target.provider.trim());
+        return !!target.provider.trim()
+          && !!target.model.trim()
+          && provider !== undefined
+          && provider.disabled !== true
+          && provider.adapter !== "jev-decision";
+      })
+    : -1;
 
   const update = (index: number, patch: Partial<ComboTarget>) => {
     onChange(targets.map((row, i) => (i === index ? { ...row, ...patch } : row)));
@@ -188,12 +198,15 @@ export function TargetEditor({
         const dragging = dragIndex === index;
         const dropTarget = overIndex === index && dragIndex !== null && dragIndex !== index;
         const quotaState = providerQuotaStates[row.provider.trim()] ?? "unknown";
+        const reasoningEfforts = models.find(
+          model => model.provider === row.provider && model.id === row.model,
+        )?.reasoningEfforts;
         return (
+          <div key={row.clientKey ?? `${row.provider}:${row.model}`} className="cwi-target-entry">
           <div
-            key={row.clientKey ?? `${row.provider}:${row.model}`}
             className={[
               "cwi-target-row",
-              strategy === "failover" ? "cwi-target-row--failover" : "",
+              strategy === "failover" || strategy === "jev" ? "cwi-target-row--failover" : "",
               dragging ? "cwi-target-row--dragging" : "",
               dropTarget ? "cwi-target-row--drop" : "",
             ].filter(Boolean).join(" ")}
@@ -315,6 +328,19 @@ export function TargetEditor({
                 <IconTrash width={14} height={14} />
               </button>
             </div>
+          </div>
+          {strategy === "jev" && (
+            <div className="cwi-jev-target-meta">
+              {index === failOpenIndex && <span className="chip">{t("cws.jev.failOpen")}</span>}
+              <span className="muted">
+                {reasoningEfforts === undefined
+                  ? t("cws.jev.effortsUnknown")
+                  : reasoningEfforts.length === 0
+                    ? t("cws.jev.effortsNone")
+                    : t("cws.jev.efforts", { efforts: reasoningEfforts.join(", ") })}
+              </span>
+            </div>
+          )}
           </div>
         );
       })}

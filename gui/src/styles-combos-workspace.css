@@ -356,6 +356,29 @@
   gap: 8px;
 }
 
+.cwi-target-entry {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.cwi-jev-target-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-left: 72px;
+  font-size: var(--text-label);
+}
+
+.cwi-jev-quick-action {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 5px;
+  padding: 0 12px 12px;
+  font-size: var(--text-label);
+}
+
 .cwi-target-row {
   display: grid;
   grid-template-columns: 28px auto minmax(0, 1fr) minmax(0, 1.2fr) 4.5rem auto auto;
@@ -462,6 +485,7 @@
 
 .cwi-strategy-seg {
   display: inline-flex;
+  flex-wrap: wrap;
   border-radius: var(--radius-pill);
   background: var(--surface-soft, var(--raised));
   padding: 3px;
@@ -575,6 +599,10 @@
   .cwi-target-row > .cwi-quota-badge {
     grid-column: 3;
     justify-self: start;
+  }
+
+  .cwi-jev-target-meta {
+    padding-left: 0;
   }
 
 }

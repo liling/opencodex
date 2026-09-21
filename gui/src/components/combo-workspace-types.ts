@@ -16,6 +16,8 @@ export type ModelOption = {
   inputModalities?: string[];
 };
 
+export type ComboAddIntent = "blank" | "jev-auto";
+
 export interface ComboWorkspaceProps {
   combos: ComboItem[];
   providerQuotaStates: ProviderQuotaStates;
@@ -27,8 +29,9 @@ export interface ComboWorkspaceProps {
   onRefresh: () => void;
   onSave: (item: ComboItem, isCreate: boolean, renameFrom?: string) => Promise<{ ok: boolean; error?: string }>;
   onRemove: (id: string) => Promise<{ ok: boolean; error?: string }>;
-  onAdd: () => void;
+  onAdd: (intent?: ComboAddIntent) => void;
   adding: boolean;
+  addIntent?: ComboAddIntent;
   onCloseAdd: () => void;
   onCreated: (id: string) => void;
 }
