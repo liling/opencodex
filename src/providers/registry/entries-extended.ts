@@ -112,6 +112,17 @@ import {
 
 export const PROVIDER_REGISTRY_EXTENDED: readonly ProviderRegistryEntry[] = [
   {
+    id: "jev",
+    label: "TypeSafe JEV",
+    baseUrl: "https://api.typesafe.ai/v1/systemone",
+    adapter: "jev-decision",
+    authKind: "key",
+    dashboardUrl: "https://console.typesafe.ai",
+    liveModels: false,
+    preserveCustomDestination: true,
+    note: "TypeSafe JEV decision service for the optional JEV Combo strategy. This credential-only preset does not publish a directly routable model.",
+  },
+  {
     id: "baseten",
     label: "Baseten Model APIs",
     baseUrl: "https://inference.baseten.co/v1",

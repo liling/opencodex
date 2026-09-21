@@ -1,4 +1,18 @@
-import type { OcxComboDefaultEffort } from "../types";
+import { readBoundedResponseBytes } from "../lib/bounded-body";
+import {
+  providerOutboundPost,
+  providerRedirectError,
+} from "../lib/provider-outbound";
+import { resolveProviderApiKey } from "../providers/api-key-resolve";
+import { providerMatchesRegistryTransport } from "../providers/registry";
+import type { OcxComboDefaultEffort, OcxConfig, OcxProviderConfig } from "../types";
+
+export const JEV_PROVIDER_ID = "jev";
+export const JEV_API_URL = "https://api.typesafe.ai/v1/systemone";
+export const JEV_MODEL = "jev-latest";
+
+const JEV_TIMEOUT_MS = 4_000;
+const JEV_MAX_RESPONSE_BYTES = 65_536;
 
 const TASK_CHARS = 500;
 const TASK_HEAD_CHARS = 320;
@@ -59,6 +73,16 @@ export interface JevDecision {
   confidence?: number;
   chosenProbability?: number;
   usage?: Record<string, number>;
+}
+
+export interface ResolveJevDecisionOptions {
+  body: unknown;
+  candidates: readonly JevCandidate[];
+  fallback: { targetKey: string; effort: OcxComboDefaultEffort | null };
+  config: OcxConfig;
+  signal?: AbortSignal;
+  post?: typeof providerOutboundPost;
+  now?: () => number;
 }
 
 interface JevRouteOption {
@@ -299,4 +323,124 @@ export function parseJevDecision(
     ...(chosenProbability !== undefined ? { chosenProbability } : {}),
     ...(usage ? { usage } : {}),
   };
+}
+
+function fallbackDecision(
+  fallback: ResolveJevDecisionOptions["fallback"],
+  gate: Exclude<JevDecision["gate"], "apply">,
+  latencyMs: number,
+): JevDecision {
+  return { ...fallback, gate, latencyMs };
+}
+
+function canonicalJevProvider(config: OcxConfig): OcxProviderConfig {
+  const configured = config.providers[JEV_PROVIDER_ID];
+  if (configured && providerMatchesRegistryTransport(JEV_PROVIDER_ID, configured)) return configured;
+  return {
+    adapter: "jev-decision",
+    baseUrl: JEV_API_URL,
+    authMode: "key",
+    liveModels: false,
+  };
+}
+
+/**
+ * Ask TypeSafe JEV for one allowlisted target/effort decision.
+ *
+ * Every operational or response failure returns the supplied first-eligible fallback. A caller
+ * abort is the exception: request cancellation remains cancellation and is rethrown by identity.
+ */
+export async function resolveJevDecision(options: ResolveJevDecisionOptions): Promise<JevDecision> {
+  const now = options.now ?? Date.now;
+  const startedAt = now();
+  const failed = (gate: Exclude<JevDecision["gate"], "apply">): JevDecision =>
+    fallbackDecision(options.fallback, gate, Math.max(0, now() - startedAt));
+
+  if (options.signal?.aborted) throw options.signal.reason;
+  if (options.candidates.length === 0) return failed("no_choices");
+
+  const configured = options.config.providers[JEV_PROVIDER_ID];
+  if (configured?.disabled === true) return failed("missing_key");
+  const configuredOwnsJev = configured
+    && providerMatchesRegistryTransport(JEV_PROVIDER_ID, configured);
+  const apiKey = (
+    configuredOwnsJev ? resolveProviderApiKey(configured.apiKey)?.trim() : undefined
+  ) || process.env.TYPESAFE_API_KEY?.trim();
+  if (!apiKey) return failed("missing_key");
+
+  let requestBody: string;
+  try {
+    requestBody = JSON.stringify({
+      model: JEV_MODEL,
+      state: buildJevState(options.body),
+      questions: buildJevRouteQuestion(options.candidates),
+    });
+  } catch {
+    return failed("invalid");
+  }
+
+  const timeoutSignal = AbortSignal.timeout(JEV_TIMEOUT_MS);
+  const signal = options.signal
+    ? AbortSignal.any([options.signal, timeoutSignal])
+    : timeoutSignal;
+  const post = options.post ?? providerOutboundPost;
+
+  try {
+    const response = await post(
+      JEV_PROVIDER_ID,
+      canonicalJevProvider(options.config),
+      JEV_API_URL,
+      {
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: requestBody,
+        signal,
+      },
+    );
+    if (options.signal?.aborted) throw options.signal.reason;
+
+    const redirectError = await providerRedirectError(response, JEV_API_URL);
+    if (redirectError) return failed("redirect");
+    if (!response.ok) {
+      try { void response.body?.cancel().catch(() => undefined); } catch { /* best effort */ }
+      return failed("http");
+    }
+
+    const bounded = await readBoundedResponseBytes(response, {
+      maxBytes: JEV_MAX_RESPONSE_BYTES,
+      signal,
+    });
+    if (options.signal?.aborted) throw options.signal.reason;
+    if (bounded.oversized) return failed("malformed");
+
+    let payload: unknown;
+    try {
+      const text = new TextDecoder("utf-8", { fatal: true }).decode(bounded.bytes);
+      payload = JSON.parse(text);
+    } catch {
+      return failed("malformed");
+    }
+
+    let parsed: ReturnType<typeof parseJevDecision>;
+    try {
+      parsed = parseJevDecision(payload, options.candidates);
+    } catch {
+      return failed("invalid");
+    }
+    if (options.signal?.aborted) throw options.signal.reason;
+    return {
+      ...parsed,
+      gate: "apply",
+      latencyMs: Math.max(0, now() - startedAt),
+    };
+  } catch (error) {
+    if (options.signal?.aborted) throw options.signal.reason;
+    if (timeoutSignal.aborted
+      || (error instanceof DOMException && error.name === "TimeoutError")) {
+      return failed("timeout");
+    }
+    return failed("network");
+  }
 }

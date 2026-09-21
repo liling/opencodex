@@ -18,6 +18,7 @@ import { removeTreeWithRetry } from "../helpers/remove-tree";
 
 const TEST_DIR = join(tmpdir(), "ocx-conn-test");
 const previousHome = process.env.OPENCODEX_HOME;
+const previousTypesafeKey = process.env.TYPESAFE_API_KEY;
 const originalFetch = globalThis.fetch;
 
 beforeEach(() => {
@@ -32,6 +33,8 @@ afterEach(() => {
   globalThis.fetch = originalFetch;
   if (previousHome === undefined) delete process.env.OPENCODEX_HOME;
   else process.env.OPENCODEX_HOME = previousHome;
+  if (previousTypesafeKey === undefined) delete process.env.TYPESAFE_API_KEY;
+  else process.env.TYPESAFE_API_KEY = previousTypesafeKey;
   removeTreeWithRetry(TEST_DIR);
 });
 
@@ -237,6 +240,72 @@ describe("POST /api/providers/test (WP040 connectivity probe)", () => {
       setCachedCatalogForTests(null);
       clearCachedUserJwt();
     }
+  });
+
+  test("JEV reports a missing key without attempting a generic static-catalog probe", async () => {
+    delete process.env.TYPESAFE_API_KEY;
+    let fetches = 0;
+    globalThis.fetch = (async () => {
+      fetches += 1;
+      return Response.json({});
+    }) as typeof fetch;
+    const config = baseConfig({
+      jev: {
+        adapter: "jev-decision",
+        baseUrl: "https://api.typesafe.ai/v1/systemone",
+        authMode: "key",
+        liveModels: false,
+      },
+    });
+
+    const { body } = await probe(config, "jev");
+
+    expect(body).toEqual({
+      ok: false,
+      latencyMs: 0,
+      error: "TypeSafe JEV API key is not configured",
+    });
+    expect(fetches).toBe(0);
+  });
+
+  test("JEV accepts a bounded decision probe and never echoes an upstream failure body", async () => {
+    const seen: Array<{ url: string; authorization: string | null; body: unknown }> = [];
+    globalThis.fetch = (async (input, init) => {
+      seen.push({
+        url: String(input),
+        authorization: new Headers(init?.headers).get("authorization"),
+        body: JSON.parse(String(init?.body)),
+      });
+      return Response.json({
+        answers: { route: { choice: "jev/probe:none", confidence: 0.9 } },
+      });
+    }) as typeof fetch;
+    const config = baseConfig({
+      jev: {
+        adapter: "jev-decision",
+        baseUrl: "https://api.typesafe.ai/v1/systemone",
+        authMode: "key",
+        apiKey: "typesafe-probe-key",
+        liveModels: false,
+      },
+    });
+
+    const connected = await probe(config, "jev");
+    expect(connected.body).toMatchObject({
+      ok: true,
+      message: "Connected. TypeSafe JEV answered a decision probe.",
+    });
+    expect(seen).toHaveLength(1);
+    expect(seen[0]?.url).toBe("https://api.typesafe.ai/v1/systemone");
+    expect(seen[0]?.authorization).toBe("Bearer typesafe-probe-key");
+    expect(seen[0]?.body).toMatchObject({ model: "jev-latest" });
+
+    globalThis.fetch = (async () => new Response("TOP_SECRET_PROVIDER_BODY", { status: 402 })) as typeof fetch;
+    (config.providers.jev as typeof config.providers.jev & { fetch?: typeof fetch }).fetch = globalThis.fetch;
+    const rejected = await probe(config, "jev");
+    expect(rejected.body).toMatchObject({ ok: false });
+    expect(String(rejected.body.error)).toContain("http");
+    expect(JSON.stringify(rejected.body)).not.toContain("TOP_SECRET_PROVIDER_BODY");
   });
 
   test("Qoder probes the official CLI model list for the configured PAT", async () => {
