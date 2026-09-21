@@ -119,6 +119,7 @@ export const PROVIDER_REGISTRY_EXTENDED: readonly ProviderRegistryEntry[] = [
     baseUrl: "https://api.typesafe.ai/v1/systemone",
     adapter: "jev-decision",
     authKind: "key",
+    credentialOnly: true,
     dashboardUrl: "https://console.typesafe.ai",
     liveModels: false,
     preserveCustomDestination: true,

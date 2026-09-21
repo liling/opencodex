@@ -109,8 +109,9 @@ OAuth bearer token.
 
 `src/providers/registry/entries-extended.ts` owns the canonical `jev` key preset at
 `https://api.typesafe.ai/v1/systemone` with adapter `jev-decision`. It is a credential owner, not an
-inference route: live discovery is disabled, no default/static model is published, and Combo
-validation rejects the decision provider as a target. `src/server/management/provider-routes.ts`
+inference route: the registry marks it `credentialOnly`, its adapter is deliberately absent from the
+routable adapter registry, live discovery is disabled, no default/static model is published, and
+Combo validation rejects the decision provider as a target. `src/server/management/provider-routes.ts`
 special-cases its connection test through the same bounded decision client before the generic
 static-catalog branch. The test sends no user prompt and returns only sanitized health status.
 

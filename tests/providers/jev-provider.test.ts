@@ -16,6 +16,7 @@ describe("TypeSafe JEV provider preset", () => {
       label: "TypeSafe JEV",
       adapter: "jev-decision",
       authKind: "key",
+      credentialOnly: true,
       baseUrl: "https://api.typesafe.ai/v1/systemone",
       dashboardUrl: "https://console.typesafe.ai",
       liveModels: false,
