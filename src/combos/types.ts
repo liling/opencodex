@@ -270,6 +270,11 @@ export function comboConfigIssues(
         path: ["targets", i, "provider"],
         message: `targets[${i}].provider "${provider}" is not configured`,
       });
+    } else if (providers[provider]?.adapter === "jev-decision") {
+      issues.push({
+        path: ["targets", i, "provider"],
+        message: `targets[${i}].provider "${provider}" is a decision service and cannot be a model target`,
+      });
     } else {
       configuredProviderCount += 1;
       if (providers[provider]?.disabled !== true) enabledProviderCount += 1;

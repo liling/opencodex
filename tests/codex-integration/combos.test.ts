@@ -1513,6 +1513,15 @@ describe("combo validation and normalization", () => {
       { raw: { targets: [null] }, path: ["targets", 0], message: "must be an object" },
       { raw: { targets: [{ provider: " ", model: "m1" }] }, path: ["targets", 0, "provider"], message: "is required" },
       { raw: { targets: [{ provider: "missing", model: "m1" }] }, path: ["targets", 0, "provider"], message: "not configured" },
+      {
+        raw: { targets: [{ provider: "jev", model: "jev-latest" }] },
+        providers: {
+          ...providers,
+          jev: { adapter: "jev-decision", baseUrl: "https://api.typesafe.ai/v1/systemone" },
+        },
+        path: ["targets", 0, "provider"],
+        message: "decision service and cannot be a model target",
+      },
       { raw: { targets: [{ provider: "a", model: " " }] }, path: ["targets", 0, "model"], message: "is required" },
       {
         raw: VALID_COMBO,

@@ -1,0 +1,323 @@
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import {
+  clearComboSelectionState,
+  clearComboTargetCooldowns,
+  coolComboTarget,
+} from "../../src/combos";
+import { catalogModelSlug, clearGatherRoutedModelsInflight, gatherRoutedModels } from "../../src/codex/catalog";
+import { createTranslatorBudget } from "../../src/lib/translator-budget";
+import { executeComboResponses } from "../../src/server/responses/core-combo";
+import type { ResponsesDispatchers } from "../../src/server/responses/core-options";
+import type { RequestLogContext } from "../../src/server/request-log";
+import type { OcxConfig, OcxProviderConfig } from "../../src/types";
+
+const JEV_URL = "https://api.typesafe.ai/v1/systemone";
+const targetRows = [
+  { provider: "astra", model: "gpt-6-astra" },
+  { provider: "sol", model: "gpt-5.6-sol" },
+  { provider: "luna", model: "gpt-5.6-luna" },
+] as const;
+
+const previousTypesafeKey = process.env.TYPESAFE_API_KEY;
+
+beforeEach(() => {
+  clearComboSelectionState();
+  clearComboTargetCooldowns();
+  clearGatherRoutedModelsInflight();
+});
+
+afterEach(() => {
+  clearComboSelectionState();
+  clearComboTargetCooldowns();
+  clearGatherRoutedModelsInflight();
+  if (previousTypesafeKey === undefined) delete process.env.TYPESAFE_API_KEY;
+  else process.env.TYPESAFE_API_KEY = previousTypesafeKey;
+});
+
+function modelProvider(model: string, efforts: string[]): OcxProviderConfig {
+  return {
+    adapter: "openai-chat",
+    baseUrl: `https://${model}.example.test/v1`,
+    authMode: "key",
+    apiKey: `key-${model}`,
+    liveModels: false,
+    models: [model],
+    modelContextWindows: { [model]: 258_400 },
+    modelMaxInputTokens: { [model]: 219_640 },
+    modelInputModalities: { [model]: ["text", "image"] },
+    modelReasoningEfforts: { [model]: efforts },
+  };
+}
+
+function makeConfig(options: {
+  jevFetch?: typeof fetch;
+  jevKey?: string | null;
+  providerOverrides?: Partial<Record<"astra" | "sol" | "luna", Partial<OcxProviderConfig>>>;
+} = {}): OcxConfig {
+  const jev: OcxProviderConfig = {
+    adapter: "jev-decision",
+    baseUrl: JEV_URL,
+    authMode: "key",
+    liveModels: false,
+    ...(options.jevKey === null ? {} : { apiKey: options.jevKey ?? "typesafe-test-key" }),
+    ...(options.jevFetch ? { fetch: options.jevFetch } : {}),
+  };
+  const astra = { ...modelProvider("gpt-6-astra", ["low", "medium", "high", "xhigh", "max"]), ...options.providerOverrides?.astra };
+  const sol = { ...modelProvider("gpt-5.6-sol", ["low", "medium", "high", "xhigh", "max"]), ...options.providerOverrides?.sol };
+  const luna = { ...modelProvider("gpt-5.6-luna", ["low", "medium", "high"]), ...options.providerOverrides?.luna };
+  return {
+    port: 0,
+    defaultProvider: "astra",
+    providers: { jev, astra, sol, luna },
+    combos: {
+      auto: {
+        alias: "jev-auto",
+        displayName: "JEV Auto",
+        strategy: "jev",
+        defaultEffort: "medium",
+        defaultEffortMode: "fallback",
+        reasoningEffortMode: "adaptive",
+        targets: targetRows.map(target => ({ ...target })),
+      },
+    },
+  };
+}
+
+type ChildHandler = (
+  body: Record<string, unknown>,
+  logCtx: RequestLogContext,
+) => Response | Promise<Response>;
+
+function dispatchers(handler: ChildHandler): ResponsesDispatchers {
+  return {
+    async handleResponses(request, _config, logCtx) {
+      return handler(await request.json() as Record<string, unknown>, logCtx);
+    },
+    async handleComboResponses() {
+      throw new Error("nested combo dispatch is not expected");
+    },
+  };
+}
+
+async function execute(
+  config: OcxConfig,
+  handler: ChildHandler,
+  raw: Record<string, unknown> = {},
+  signal?: AbortSignal,
+): Promise<Response> {
+  const body = {
+    model: "jev-auto",
+    input: "Implement the next step.",
+    stream: false,
+    ...raw,
+  };
+  const request = new Request("http://127.0.0.1/v1/responses", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const budget = createTranslatorBudget();
+  try {
+    return await executeComboResponses(
+      request,
+      body,
+      "auto",
+      config,
+      { model: "", provider: "" },
+      { translatorBudget: budget, ...(signal ? { abortSignal: signal } : {}) },
+      dispatchers(handler),
+    );
+  } finally {
+    budget.dispose();
+  }
+}
+
+function choiceFetch(
+  choice: string,
+  seen: Array<Record<string, unknown>> = [],
+): typeof fetch {
+  return (async (_input, init) => {
+    const payload = JSON.parse(String(init?.body)) as Record<string, unknown>;
+    seen.push(payload);
+    return Response.json({ answers: { route: { choice, confidence: 0.8 } } });
+  }) as typeof fetch;
+}
+
+function success(model: string): Response {
+  return Response.json({ id: `resp-${model}`, object: "response", status: "completed", model, output: [] });
+}
+
+describe("JEV Combo runtime", () => {
+  test("routes the initial call to JEV's allowlisted target and keeps direct/catalog rows", async () => {
+    const jevRequests: Array<Record<string, unknown>> = [];
+    const config = makeConfig({
+      jevFetch: choiceFetch("sol/gpt-5.6-sol:high", jevRequests),
+    });
+    const childBodies: Record<string, unknown>[] = [];
+
+    const response = await execute(config, body => {
+      childBodies.push(body);
+      return success(String(body.model));
+    }, {
+      reasoning: { effort: "low", summary: "auto" },
+      service_tier: "priority",
+    });
+
+    expect(response.status).toBe(200);
+    expect(childBodies).toEqual([expect.objectContaining({
+      model: "sol/gpt-5.6-sol",
+      reasoning: { effort: "high", summary: "auto" },
+    })]);
+    expect(childBodies[0]).not.toHaveProperty("service_tier");
+    expect(jevRequests).toHaveLength(1);
+    expect(jevRequests[0]).toMatchObject({ model: "jev-latest" });
+
+    const catalogConfig = makeConfig();
+    delete (catalogConfig.providers.jev as OcxProviderConfig & { fetch?: typeof fetch }).fetch;
+    const models = await gatherRoutedModels(catalogConfig);
+    expect(models.filter(model => model.provider === "combo").map(catalogModelSlug)).toEqual(["jev-auto"]);
+    for (const target of targetRows) {
+      expect(models.some(model => model.provider === target.provider && model.id === target.model)).toBeTrue();
+    }
+    expect(models.some(model => model.provider === "jev")).toBeFalse();
+  });
+
+  test("fails open to the first eligible target at the configured medium effort", async () => {
+    delete process.env.TYPESAFE_API_KEY;
+    let jevCalls = 0;
+    const noKey = makeConfig({
+      jevKey: null,
+      jevFetch: (async () => {
+        jevCalls += 1;
+        return Response.json({});
+      }) as typeof fetch,
+    });
+    const missingKeyBodies: Record<string, unknown>[] = [];
+    const missingKey = await execute(noKey, body => {
+      missingKeyBodies.push(body);
+      return success(String(body.model));
+    }, { reasoning: { effort: "max" }, service_tier: "priority" });
+
+    expect(missingKey.status).toBe(200);
+    expect(jevCalls).toBe(0);
+    expect(missingKeyBodies[0]).toMatchObject({
+      model: "astra/gpt-6-astra",
+      reasoning: { effort: "medium" },
+    });
+    expect(missingKeyBodies[0]).not.toHaveProperty("service_tier");
+
+    const invalidBodies: Record<string, unknown>[] = [];
+    const invalid = makeConfig({ jevFetch: choiceFetch("attacker/model:max") });
+    const invalidResponse = await execute(invalid, body => {
+      invalidBodies.push(body);
+      return success(String(body.model));
+    });
+    expect(invalidResponse.status).toBe(200);
+    expect(invalidBodies[0]).toMatchObject({
+      model: "astra/gpt-6-astra",
+      reasoning: { effort: "medium" },
+    });
+  });
+
+  test("uses ordinary Combo fallback once after a selected target fails", async () => {
+    const jevRequests: Array<Record<string, unknown>> = [];
+    const config = makeConfig({ jevFetch: choiceFetch("sol/gpt-5.6-sol:high", jevRequests) });
+    const childBodies: Record<string, unknown>[] = [];
+
+    const response = await execute(config, body => {
+      childBodies.push(body);
+      return String(body.model).startsWith("sol/")
+        ? Response.json({ error: { message: "temporary outage" } }, { status: 503 })
+        : success(String(body.model));
+    }, {
+      reasoning: { effort: "low", summary: "auto" },
+      service_tier: "priority",
+    });
+
+    expect(response.status).toBe(200);
+    expect(jevRequests).toHaveLength(1);
+    expect(childBodies).toHaveLength(2);
+    expect(childBodies[0]).toMatchObject({
+      model: "sol/gpt-5.6-sol",
+      reasoning: { effort: "high", summary: "auto" },
+    });
+    expect(childBodies[0]).not.toHaveProperty("service_tier");
+    expect(childBodies[1]).toMatchObject({
+      model: "astra/gpt-6-astra",
+      reasoning: { effort: "low", summary: "auto" },
+      service_tier: "priority",
+    });
+  });
+
+  test("offers only currently eligible targets to JEV", async () => {
+    const jevRequests: Array<Record<string, unknown>> = [];
+    const config = makeConfig({
+      jevFetch: choiceFetch("sol/gpt-5.6-sol:low", jevRequests),
+      providerOverrides: { luna: { disabled: true } },
+    });
+    coolComboTarget("auto", targetRows[0], { cooldownMs: 60_000 });
+
+    const response = await execute(config, body => success(String(body.model)));
+
+    expect(response.status).toBe(200);
+    const questions = jevRequests[0]?.questions as {
+      route?: { criteria?: Record<string, unknown> };
+    };
+    expect(Object.keys(questions.route?.criteria ?? {})).toEqual([
+      "sol/gpt-5.6-sol:low",
+      "sol/gpt-5.6-sol:medium",
+      "sol/gpt-5.6-sol:high",
+      "sol/gpt-5.6-sol:xhigh",
+      "sol/gpt-5.6-sol:max",
+    ]);
+  });
+
+  test("represents an empty effort ladder as none and strips every caller effort control", async () => {
+    const jevRequests: Array<Record<string, unknown>> = [];
+    const config = makeConfig({
+      jevFetch: choiceFetch("sol/gpt-5.6-sol:none", jevRequests),
+      providerOverrides: { sol: { modelReasoningEfforts: { "gpt-5.6-sol": [] } } },
+    });
+    const childBodies: Record<string, unknown>[] = [];
+
+    const response = await execute(config, body => {
+      childBodies.push(body);
+      return success(String(body.model));
+    }, {
+      reasoning: { effort: "high", summary: "auto" },
+      reasoning_effort: "xhigh",
+      thinking_budget: 8_000,
+      thinking: { type: "enabled", budget_tokens: 8_000 },
+    });
+
+    expect(response.status).toBe(200);
+    expect(Object.keys((jevRequests[0]?.questions as { route: { criteria: Record<string, unknown> } }).route.criteria))
+      .toContain("sol/gpt-5.6-sol:none");
+    expect(childBodies[0]).toMatchObject({
+      model: "sol/gpt-5.6-sol",
+      reasoning: { summary: "auto" },
+    });
+    expect(childBodies[0]).not.toHaveProperty("reasoning_effort");
+    expect(childBodies[0]).not.toHaveProperty("thinking_budget");
+    expect(childBodies[0]).not.toHaveProperty("thinking");
+  });
+
+  test("returns 499 without dispatching a model when the caller aborts during JEV", async () => {
+    const controller = new AbortController();
+    const reason = new DOMException("caller stopped", "AbortError");
+    const jevFetch = (async (_input, init) => new Promise<Response>((_resolve, reject) => {
+      init?.signal?.addEventListener("abort", () => reject(init.signal?.reason), { once: true });
+      queueMicrotask(() => controller.abort(reason));
+    })) as typeof fetch;
+    const config = makeConfig({ jevFetch });
+    let modelDispatches = 0;
+
+    const response = await execute(config, body => {
+      modelDispatches += 1;
+      return success(String(body.model));
+    }, {}, controller.signal);
+
+    expect(response.status).toBe(499);
+    expect(modelDispatches).toBe(0);
+  });
+});
