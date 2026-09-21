@@ -131,11 +131,14 @@ describe("combo-workspace-data", () => {
 
   test("JEV Auto template uses the available Astra, Sol, and Luna targets in fail-open order", () => {
     const draft = jevAutoDraft([
+      { provider: "native-only", id: "gpt-6-astra", reasoningEfforts: ["medium"] },
+      { provider: "native-only", id: "gpt-5.6-sol", reasoningEfforts: ["medium"] },
+      { provider: "native-only", id: "gpt-5.6-luna", reasoningEfforts: ["medium"] },
       { provider: "openai", id: "gpt-5.6-luna", reasoningEfforts: ["low", "medium"] },
       { provider: "anthropic", id: "claude-sonnet-5" },
       { provider: "openai", id: "gpt-6-astra", reasoningEfforts: ["medium", "high"] },
       { provider: "openai", id: "gpt-5.6-sol", reasoningEfforts: ["low", "medium", "high"] },
-    ]);
+    ], new Set(["openai", "anthropic"]));
 
     expect(draft).toMatchObject({
       id: "jev-auto",

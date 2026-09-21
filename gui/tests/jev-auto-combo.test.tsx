@@ -4,6 +4,7 @@ import { act } from "react";
 import type { Root } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
 import ComboWorkspace from "../src/components/ComboWorkspace";
+import { TargetEditor } from "../src/components/combo-workspace-controls";
 import ProviderDetails from "../src/components/provider-workspace/ProviderDetails";
 import { LanguageProvider } from "../src/i18n/provider";
 import Combos from "../src/pages/Combos";
@@ -18,6 +19,9 @@ let testWindow: Window;
 let root: Root | null;
 
 const models = [
+  { provider: "native-only", id: "gpt-6-astra", reasoningEfforts: ["medium"] },
+  { provider: "native-only", id: "gpt-5.6-sol", reasoningEfforts: ["medium"] },
+  { provider: "native-only", id: "gpt-5.6-luna", reasoningEfforts: ["medium"] },
   { provider: "openai", id: "gpt-6-astra", reasoningEfforts: ["medium", "high", "xhigh"] },
   { provider: "openai", id: "gpt-5.6-sol", reasoningEfforts: ["low", "medium", "high"] },
   { provider: "openai", id: "gpt-5.6-luna", reasoningEfforts: ["low", "medium"] },
@@ -117,6 +121,31 @@ test("Combo workspace exposes JEV Auto and reports an existing selector collisio
   expect(collision).toMatch(/disabled=""[^>]*>[^<]*Create JEV Auto|Create JEV Auto[^<]*<\/button>/);
 });
 
+test("JEV fail-open badge skips quota-exhausted targets", () => {
+  const markup = renderToStaticMarkup(
+    <LanguageProvider>
+      <TargetEditor
+        targets={[
+          { provider: "openai", model: "gpt-6-astra", clientKey: "first" },
+          { provider: "anthropic", model: "claude-sonnet-5", clientKey: "second" },
+        ]}
+        strategy="jev"
+        providers={[{ name: "openai" }, { name: "anthropic" }]}
+        models={models}
+        providerQuotaStates={{ openai: "exhausted", anthropic: "available" }}
+        onChange={() => {}}
+      />
+    </LanguageProvider>,
+  );
+  const host = document.createElement("div");
+  host.innerHTML = markup;
+  const entries = host.querySelectorAll(".cwi-target-entry");
+
+  expect(entries).toHaveLength(2);
+  expect(entries[0]!.querySelector(".chip")).toBeNull();
+  expect(entries[1]!.querySelector(".chip")?.textContent).toBe("Fail-open target");
+});
+
 test("configured JEV deep-link opens the shared editable Combo modal and submits the normal PUT", async () => {
   const { createRoot } = await import("react-dom/client");
   const host = document.createElement("div");
@@ -195,6 +224,8 @@ test("configured JEV deep-link opens the shared editable Combo modal and submits
   expect(host.querySelector('[role="radio"][aria-checked="true"]')?.textContent).toContain("JEV");
   expect(host.textContent).toContain("Fail-open target");
   expect(host.textContent).toContain("medium, high, xhigh");
+  expect([...dialog!.querySelectorAll<HTMLSelectElement>('select[aria-label="Provider"]')]
+    .map(select => select.value)).toEqual(["openai", "openai", "openai"]);
 
   const addTarget = [...host.querySelectorAll<HTMLButtonElement>("button")]
     .find(button => button.textContent?.trim() === "Add target")!;

@@ -1,4 +1,8 @@
-import { isCodexReasoningEffort, isDeclaredReasoningEffort } from "../../reasoning-effort";
+import {
+  isCodexReasoningEffort,
+  isDeclaredReasoningEffort,
+  resolveEffortAtOrBelow,
+} from "../../reasoning-effort";
 import { recordAttemptRequestedEffort } from "../request-log";
 import {
   CODEX_TEXT_GUARDED_BUDGET_POLICY,
@@ -461,13 +465,20 @@ export async function executeComboResponses(
     const choices = eligibleJevComboChoices(config, comboId, targetEligible, initialNow);
     const first = choices[0];
     if (!first) return comboUnavailable(comboId);
-    const fallback = {
+    const resolvedFailOpenEffort = resolveEffortAtOrBelow(
+      "medium",
+      first.candidate.reasoningEfforts,
+    );
+    const fallback: Pick<JevDecision, "targetKey" | "effort"> = {
       targetKey: first.candidate.key,
-      effort: comboDefaultEffort(config, comboId),
+      effort: resolvedFailOpenEffort && isCodexReasoningEffort(resolvedFailOpenEffort)
+        ? resolvedFailOpenEffort as OcxComboDefaultEffort
+        : null,
     };
     const decisionStartedAt = Date.now();
+    let decision: JevDecision;
     try {
-      jevDecision = await resolveJevDecision({
+      decision = await resolveJevDecision({
         body,
         candidates: choices.map(choice => choice.candidate),
         fallback,
@@ -476,24 +487,25 @@ export async function executeComboResponses(
       });
     } catch (error) {
       if (options.abortSignal?.aborted) return clientCancelledResponse();
-      jevDecision = {
+      decision = {
         ...fallback,
         gate: "network",
         latencyMs: Math.max(0, Date.now() - decisionStartedAt),
       };
     }
-    const selected = choices.find(choice => choice.candidate.key === jevDecision!.targetKey) ?? first;
+    jevDecision = decision;
+    const selected = choices.find(choice => choice.candidate.key === decision.targetKey) ?? first;
     pick = { ...selected.pick, attempted: [targetKey(selected.pick.target)] };
     console.debug("[combo] JEV decision", {
-      targetKey: jevDecision.targetKey,
-      effort: jevDecision.effort,
-      gate: jevDecision.gate,
-      latencyMs: jevDecision.latencyMs,
-      ...(jevDecision.confidence !== undefined ? { confidence: jevDecision.confidence } : {}),
-      ...(jevDecision.chosenProbability !== undefined
-        ? { chosenProbability: jevDecision.chosenProbability }
+      targetKey: decision.targetKey,
+      effort: decision.effort,
+      gate: decision.gate,
+      latencyMs: decision.latencyMs,
+      ...(decision.confidence !== undefined ? { confidence: decision.confidence } : {}),
+      ...(decision.chosenProbability !== undefined
+        ? { chosenProbability: decision.chosenProbability }
         : {}),
-      ...(jevDecision.usage ? { usage: jevDecision.usage } : {}),
+      ...(decision.usage ? { usage: decision.usage } : {}),
     });
   }
   // One immutable combo selection trace, before any child dispatch; child
@@ -649,8 +661,11 @@ export async function executeComboResponses(
     let response: Response;
     try {
       const currentTargetProvider = pick.target.provider;
+      const remainingTargets = combo.strategy === "jev"
+        ? combo.targets.filter(target => !pick!.attempted.includes(targetKey(target)))
+        : combo.targets.slice(pick.targetIndex + 1);
       const deferCodexResetDerivedCooldown = (combo.strategy === "failover" || combo.strategy === "jev")
-        && combo.targets.slice(pick.targetIndex + 1).some(target =>
+        && remainingTargets.some(target =>
           target.provider === currentTargetProvider
           && targetEligible(target)
           && !isComboTargetInCooldown(comboId, target),

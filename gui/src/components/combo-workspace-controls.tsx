@@ -167,7 +167,8 @@ export function TargetEditor({
           && !!target.model.trim()
           && provider !== undefined
           && provider.disabled !== true
-          && provider.adapter !== "jev-decision";
+          && provider.adapter !== "jev-decision"
+          && providerQuotaStates[target.provider.trim()] !== "exhausted";
       })
     : -1;
 

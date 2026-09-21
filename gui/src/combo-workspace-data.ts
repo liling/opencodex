@@ -565,9 +565,11 @@ const JEV_AUTO_MODEL_IDS = ["gpt-6-astra", "gpt-5.6-sol", "gpt-5.6-luna"] as con
 /** Build the opt-in JEV Combo template from models that are available right now. */
 export function jevAutoDraft(
   models: readonly { provider: string; id: string }[],
+  eligibleProviders?: ReadonlySet<string>,
 ): ComboItem {
   const targets = JEV_AUTO_MODEL_IDS.flatMap((id) => {
-    const model = models.find((candidate) => candidate.id === id);
+    const model = models.find((candidate) => candidate.id === id
+      && (eligibleProviders === undefined || eligibleProviders.has(candidate.provider)));
     return model ? [newComboTarget({ provider: model.provider, model: model.id })] : [];
   });
   return {

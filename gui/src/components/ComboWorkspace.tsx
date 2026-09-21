@@ -48,9 +48,17 @@ export default function ComboWorkspace({
     () => combos.some(combo => combo.id === "jev-auto" || combo.alias === "jev-auto"),
     [combos],
   );
+  const jevTargetProviders = useMemo(
+    () => new Set(providers
+      .filter(provider => !provider.disabled
+        && !provider.hiddenFromPicker
+        && provider.adapter !== "jev-decision")
+      .map(provider => provider.name)),
+    [providers],
+  );
   const addDraft = useMemo(
-    () => addIntent === "jev-auto" ? jevAutoDraft(models) : undefined,
-    [addIntent, models],
+    () => addIntent === "jev-auto" ? jevAutoDraft(models, jevTargetProviders) : undefined,
+    [addIntent, jevTargetProviders, models],
   );
 
   const filtered = useMemo(() => filterCombos(combos, query), [combos, query]);

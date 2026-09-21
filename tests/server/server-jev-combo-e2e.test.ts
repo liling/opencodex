@@ -19,6 +19,7 @@ const targetRows = [
 ] as const;
 
 const previousTypesafeKey = process.env.TYPESAFE_API_KEY;
+const previousJevKey = process.env.JEV_API_KEY;
 
 beforeEach(() => {
   clearComboSelectionState();
@@ -32,6 +33,8 @@ afterEach(() => {
   clearGatherRoutedModelsInflight();
   if (previousTypesafeKey === undefined) delete process.env.TYPESAFE_API_KEY;
   else process.env.TYPESAFE_API_KEY = previousTypesafeKey;
+  if (previousJevKey === undefined) delete process.env.JEV_API_KEY;
+  else process.env.JEV_API_KEY = previousJevKey;
 });
 
 function modelProvider(model: string, efforts: string[]): OcxProviderConfig {
@@ -74,8 +77,6 @@ function makeConfig(options: {
         alias: "jev-auto",
         displayName: "JEV Auto",
         strategy: "jev",
-        defaultEffort: "medium",
-        defaultEffortMode: "fallback",
         reasoningEffortMode: "adaptive",
         targets: targetRows.map(target => ({ ...target })),
       },
@@ -86,12 +87,13 @@ function makeConfig(options: {
 type ChildHandler = (
   body: Record<string, unknown>,
   logCtx: RequestLogContext,
+  options?: Parameters<ResponsesDispatchers["handleResponses"]>[3],
 ) => Response | Promise<Response>;
 
 function dispatchers(handler: ChildHandler): ResponsesDispatchers {
   return {
-    async handleResponses(request, _config, logCtx) {
-      return handler(await request.json() as Record<string, unknown>, logCtx);
+    async handleResponses(request, _config, logCtx, options) {
+      return handler(await request.json() as Record<string, unknown>, logCtx, options);
     },
     async handleComboResponses() {
       throw new Error("nested combo dispatch is not expected");
@@ -160,6 +162,9 @@ describe("JEV Combo runtime", () => {
       return success(String(body.model));
     }, {
       reasoning: { effort: "low", summary: "auto" },
+      reasoning_effort: "max",
+      thinking_budget: 8_000,
+      thinking: { type: "enabled", budget_tokens: 8_000 },
       service_tier: "priority",
     });
 
@@ -169,6 +174,9 @@ describe("JEV Combo runtime", () => {
       reasoning: { effort: "high", summary: "auto" },
     })]);
     expect(childBodies[0]).not.toHaveProperty("service_tier");
+    expect(childBodies[0]).not.toHaveProperty("reasoning_effort");
+    expect(childBodies[0]).not.toHaveProperty("thinking_budget");
+    expect(childBodies[0]).not.toHaveProperty("thinking");
     expect(jevRequests).toHaveLength(1);
     expect(jevRequests[0]).toMatchObject({ model: "jev-latest" });
 
@@ -182,8 +190,9 @@ describe("JEV Combo runtime", () => {
     expect(models.some(model => model.provider === "jev")).toBeFalse();
   });
 
-  test("fails open to the first eligible target at the configured medium effort", async () => {
+  test("fails open to the first eligible target at medium without requiring a Combo default", async () => {
     delete process.env.TYPESAFE_API_KEY;
+    delete process.env.JEV_API_KEY;
     let jevCalls = 0;
     const noKey = makeConfig({
       jevKey: null,
@@ -247,6 +256,44 @@ describe("JEV Combo runtime", () => {
       reasoning: { effort: "low", summary: "auto" },
       service_tier: "priority",
     });
+  });
+
+  test("defers reset-derived cooldown when an earlier same-provider target remains", async () => {
+    const config = makeConfig({ jevFetch: choiceFetch("astra/gpt-5.6-sol:high") });
+    config.providers.astra = {
+      ...config.providers.astra!,
+      models: ["gpt-6-astra", "gpt-5.6-sol"],
+      modelContextWindows: {
+        "gpt-6-astra": 258_400,
+        "gpt-5.6-sol": 258_400,
+      },
+      modelMaxInputTokens: {
+        "gpt-6-astra": 219_640,
+        "gpt-5.6-sol": 219_640,
+      },
+      modelInputModalities: {
+        "gpt-6-astra": ["text", "image"],
+        "gpt-5.6-sol": ["text", "image"],
+      },
+      modelReasoningEfforts: {
+        "gpt-6-astra": ["low", "medium", "high", "xhigh", "max"],
+        "gpt-5.6-sol": ["low", "medium", "high", "xhigh", "max"],
+      },
+    };
+    config.combos!.auto!.targets = [
+      { provider: "astra", model: "gpt-6-astra" },
+      { provider: "astra", model: "gpt-5.6-sol" },
+      { provider: "luna", model: "gpt-5.6-luna" },
+    ];
+    const cooldownDeferrals: Array<boolean | undefined> = [];
+
+    const response = await execute(config, (body, _logCtx, options) => {
+      cooldownDeferrals.push(options?.deferCodexResetDerivedCooldown);
+      return success(String(body.model));
+    });
+
+    expect(response.status).toBe(200);
+    expect(cooldownDeferrals).toEqual([true]);
   });
 
   test("offers only currently eligible targets to JEV", async () => {

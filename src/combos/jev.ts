@@ -13,6 +13,9 @@ export const JEV_MODEL = "jev-latest";
 
 const JEV_TIMEOUT_MS = 4_000;
 const JEV_MAX_RESPONSE_BYTES = 65_536;
+const JEV_OUTBOUND_DEPENDENCIES = {
+  isCanonicalUrl: (name: string, url: string) => name === JEV_PROVIDER_ID && url === JEV_API_URL,
+};
 
 const TASK_CHARS = 500;
 const TASK_HEAD_CHARS = 320;
@@ -68,7 +71,7 @@ export interface JevCandidate {
 export interface JevDecision {
   targetKey: string;
   effort: OcxComboDefaultEffort | null;
-  gate: "apply" | "missing_key" | "no_choices" | "timeout" | "network" | "redirect" | "http" | "malformed" | "invalid";
+  gate: "apply" | "missing_key" | "no_choices" | "no_state" | "timeout" | "network" | "redirect" | "http" | "malformed" | "invalid";
   latencyMs: number;
   confidence?: number;
   chosenProbability?: number;
@@ -209,6 +212,14 @@ export function buildJevState(body: unknown): Record<string, unknown> {
     step,
     ...(previousAssistant ? { previous_assistant: previousAssistant.slice(-ASSISTANT_TAIL_CHARS) } : {}),
   };
+}
+
+function hasJevDecisionState(state: Record<string, unknown>): boolean {
+  if (typeof state.task === "string" && state.task.trim()) return true;
+  if (isRecord(state.signals) && state.signals.has_image === true) return true;
+  return isRecord(state.step)
+    && typeof state.step.last_tool_output_tail === "string"
+    && Boolean(state.step.last_tool_output_tail.trim());
 }
 
 function candidateOptions(candidates: readonly JevCandidate[]): Map<string, JevRouteOption> {
@@ -365,14 +376,17 @@ export async function resolveJevDecision(options: ResolveJevDecisionOptions): Pr
     && providerMatchesRegistryTransport(JEV_PROVIDER_ID, configured);
   const apiKey = (
     configuredOwnsJev ? resolveProviderApiKey(configured.apiKey)?.trim() : undefined
-  ) || process.env.TYPESAFE_API_KEY?.trim();
+  ) || process.env.TYPESAFE_API_KEY?.trim()
+    || process.env.JEV_API_KEY?.trim();
   if (!apiKey) return failed("missing_key");
 
   let requestBody: string;
   try {
+    const state = buildJevState(options.body);
+    if (!hasJevDecisionState(state)) return failed("no_state");
     requestBody = JSON.stringify({
       model: JEV_MODEL,
-      state: buildJevState(options.body),
+      state,
       questions: buildJevRouteQuestion(options.candidates),
     });
   } catch {
@@ -398,6 +412,7 @@ export async function resolveJevDecision(options: ResolveJevDecisionOptions): Pr
         body: requestBody,
         signal,
       },
+      JEV_OUTBOUND_DEPENDENCIES,
     );
     if (options.signal?.aborted) throw options.signal.reason;
 

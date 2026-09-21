@@ -112,6 +112,8 @@ import {
 
 export const PROVIDER_REGISTRY_EXTENDED: readonly ProviderRegistryEntry[] = [
   {
+    // Verified 2026-09-21: docs.typesafe.ai/introduction/quickstart and /api document the fixed
+    // endpoint, Bearer auth, jev-latest, and TYPESAFE_API_KEY; typesafe.ai/legal/mca permits API integration.
     id: "jev",
     label: "TypeSafe JEV",
     baseUrl: "https://api.typesafe.ai/v1/systemone",

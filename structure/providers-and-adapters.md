@@ -105,6 +105,34 @@ OAuth presets resolve discovery against the same canonical registry transport as
 before any adapter-specific transport override, so a stale configured `baseUrl` cannot receive an
 OAuth bearer token.
 
+## TypeSafe JEV decision provider
+
+`src/providers/registry/entries-extended.ts` owns the canonical `jev` key preset at
+`https://api.typesafe.ai/v1/systemone` with adapter `jev-decision`. It is a credential owner, not an
+inference route: live discovery is disabled, no default/static model is published, and Combo
+validation rejects the decision provider as a target. `src/server/management/provider-routes.ts`
+special-cases its connection test through the same bounded decision client before the generic
+static-catalog branch. The test sends no user prompt and returns only sanitized health status.
+
+The request path consumes a configured literal/reference key only when the row still matches the
+canonical registry transport, with `TYPESAFE_API_KEY` and the standard provider-derived
+`JEV_API_KEY` as explicit environment fallbacks. A same-named custom destination cannot receive
+either credential through the JEV client. All automated coverage mocks TypeSafe; live-key behavior
+remains an operator smoke boundary.
+
+`src/combos/jev.ts` extracts bounded user-task, previous-assistant, and latest-tool-output text plus
+the tool name and boolean signals; raw image data, tool arguments, encrypted reasoning, headers, and
+the JEV credential are excluded. It owns the joint target/effort choice map, strict response
+validation, fixed `jev-latest` destination, four-second deadline, no-redirect policy, bounded response,
+and caller-cancellation propagation. Missing credentials or safe state, transport failures, and invalid
+answers fail open to the first eligible target; no response can escape the configured choice map.
+Telemetry never retains extracted state or credentials.
+
+`src/server/responses/core-combo.ts` computes current eligibility, asks JEV once for the initial pick,
+applies the validated effort, and removes caller `service_tier` for that child. A retryable child
+failure re-enters the ordinary Combo fallback loop from the untouched request without another JEV
+call. Direct models and every other Combo strategy bypass this path.
+
 The Crusoe preset uses that fixed-key path at `https://api.inference.crusoecloud.com/v1`. Its
 registry-owned policy admits only public rows whose `architecture.modality` is `text` or
 `multimodal`, caps the response at 256 KiB and 256 raw rows, and leaves same-named custom
