@@ -705,6 +705,24 @@ describe("headless GUI parity CLI", () => {
     });
   });
 
+  test("combo set accepts the jev strategy without changing target order", async () => {
+    const runtime = fakeRuntime();
+    const code = await handleComboCommand([
+      "set", "jev-auto", "--targets", "openai/gpt-6-astra,openai/gpt-5.6-sol", "--strategy", "jev", "--json",
+    ], runtime.deps);
+    expect(code).toBe(0);
+    expect(runtime.requests.find(request => request.method === "PUT")?.body).toMatchObject({
+      id: "jev-auto",
+      combo: {
+        strategy: "jev",
+        targets: [
+          { provider: "openai", model: "gpt-6-astra" },
+          { provider: "openai", model: "gpt-5.6-sol" },
+        ],
+      },
+    });
+  });
+
   test("combo set exposes the opt-in force-default policy", async () => {
     const runtime = fakeRuntime();
     expect(await handleComboCommand([

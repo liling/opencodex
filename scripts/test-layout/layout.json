@@ -952,6 +952,7 @@
     "key-failover.test.ts": "adapters",
     "key-login-live-update.test.ts": "oauth",
     "key-login-preserves-model-costs.test.ts": "oauth",
+    "jev-decision.test.ts": "routing",
     "keyring-smoke.test.ts": "ci-workflows",
     "kimi-oauth-identity.test.ts": "providers",
     "kimi-responses-adjacency.test.ts": "providers",

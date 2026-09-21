@@ -1195,6 +1195,20 @@ describe("combo failure policy and advancement", () => {
 });
 
 describe("deterministic combo selection", () => {
+  test("jev is a valid persisted strategy and its synchronous fail-open is configured order", () => {
+    const raw = {
+      strategy: "jev",
+      targets: [
+        { provider: "a", model: "m1" },
+        { provider: "b", model: "m2" },
+      ],
+    } as unknown as OcxComboConfig;
+    expect(comboConfigIssues("auto", raw, baseConfig().providers)).toEqual([]);
+    expect(normalizeComboConfig(raw).strategy).toBe("jev");
+    const config = baseConfig({ combos: { auto: raw } });
+    expect(pickComboTarget(config, "auto")?.target.provider).toBe("a");
+  });
+
   test("replacing quota snapshots removes providers omitted from the refresh", () => {
     const now = Date.now();
     replaceCachedProviderQuotas([

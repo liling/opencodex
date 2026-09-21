@@ -142,8 +142,9 @@ export function comboConfigIssues(
     && body.strategy !== "round-robin"
     && body.strategy !== "random"
     && body.strategy !== "least-used"
-    && body.strategy !== "reset-window") {
-    issues.push({ path: ["strategy"], message: 'strategy must be "failover", "round-robin", "random", "least-used", or "reset-window"' });
+    && body.strategy !== "reset-window"
+    && body.strategy !== "jev") {
+    issues.push({ path: ["strategy"], message: 'strategy must be "failover", "round-robin", "random", "least-used", "reset-window", or "jev"' });
   }
   if (body.stickyLimit !== undefined
     && (typeof body.stickyLimit !== "number" || !Number.isInteger(body.stickyLimit)

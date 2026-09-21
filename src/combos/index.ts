@@ -56,3 +56,10 @@ export {
   resetComboEffortWarningStateForTests,
 } from "./request";
 export { earliestQuotaResetAt, quotaResetRemainingMs } from "./reset-window";
+export {
+  buildJevRouteQuestion,
+  buildJevState,
+  parseJevDecision,
+  type JevCandidate,
+  type JevDecision,
+} from "./jev";
