@@ -296,6 +296,7 @@ by the current window size.
 | `GET /api/claude/inbound-debug` | Read Claude inbound debug state and entries | — |
 | `GET /api/usage` | Scan the usage ledger into compact aggregates of readable rows, then incrementally fold verified appends; summarize by preset or inclusive custom window and client surface, with a Codex `accounts` breakdown keyed by stable non-PII log labels | 400 invalid custom bounds; returns an `error: "read_failed"` summary if storage cannot be read |
 | `GET /api/usage/timeline` | Bucketed usage by model/account; accepts `hours`, `bucketMinutes`, `metric`, `aggregation`, `grouping`, comma-separated `models` and repeated `hiddenProvider` filters | 400 invalid query or limits |
+| `GET /api/usage?jev=1` | Project persisted JEV decisions and their physical target sends. Optional `comboId` selects one Combo; `range` accepts `7d`, `30d`, or `all` (default `30d`). | 400 invalid `comboId`; 500 `{ "error": "read_failed" }` if the ledger cannot be read |
 | `GET /api/metrics` | Return process-local Prometheus text metrics for logical requests, physical sends, recovery kinds, duration, and TTFT. Labels are closed to protocol, result, and recovery class; request and credential identifiers are never exported. | 404 when `metricsExport.enabled` was not true at startup; ordinary management authentication is required and data-plane credentials grant no access |
 | `GET /api/storage` | Scan Codex storage usage by bucket | Returns an `error: "scan_failed"` payload on scan failure |
 | `POST /api/storage/cleanup/preview` | Preview archived-session cleanup and return a binding digest | 400 `invalid_json` or `invalid_percent` |
@@ -344,6 +345,22 @@ responses and incremental appends, including empty or unmatched results; a rebui
 No provider, model, or API-key identifier is shortened to make a row fit. An absent flag is not proof
 that every ledger record was valid. This is separate from `historyTruncated`, `entriesTruncated`,
 and token measurement coverage.
+
+The JEV projection reports decision counts and gates, applied versus fail-open picks, decision
+latency/confidence, TypeSafe-reported decision tokens, physical target send counts, available model
+token/cache totals, reasoning-effort picks, and requests that sent to a target other than JEV's
+initial choice. `attempts` are summed from each persisted attempt's `sendCount`; a zero-send row is
+not a fallback. One reported usage object is counted once even when its attempt retried, so the
+measured-attempt count can be lower than the physical-send count. Model cardinality is bounded; an
+explicit overflow row aggregates additional identities without dropping summary totals.
+
+JEV stats use the same append-only `usage.jsonl` ledger and cooperative scanner as ordinary usage.
+Cold reads scan the current ledger, unchanged polls perform no file read, and verified growth folds
+only the appended suffix. Concurrent identical requests share one scan. The persisted JEV record is
+closed and content-free: Combo id, selected provider/model/effort, decision gate, latency, optional
+confidence/probability, and optional numeric decision usage. It never stores prompts, headers,
+credentials, tool arguments, or raw TypeSafe responses. Oversized rows retain the same positive
+`usageIncomplete` diagnostic as the ordinary usage endpoint.
 
 New xAI attempts in `usage.jsonl` include a request-time `credentialSource`: `grok-oauth`
 for the resolved Grok CLI OAuth transport, or `xai-api-key` for the public xAI API key

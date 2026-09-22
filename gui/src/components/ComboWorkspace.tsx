@@ -18,6 +18,7 @@ import type { ComboWorkspaceProps } from "./combo-workspace-types";
 export type { ModelOption, ProviderOption, ComboWorkspaceProps } from "./combo-workspace-types";
 
 export default function ComboWorkspace({
+  apiBase = "",
   combos,
   providerQuotaStates,
   providers,
@@ -203,6 +204,7 @@ export default function ComboWorkspace({
         {baseline ? (
           <DetailPanel
             key={baseline.id}
+            apiBase={apiBase}
             baseline={baseline}
             otherIds={otherComboIds}
             otherAliases={otherComboAliases}

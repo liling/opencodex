@@ -382,6 +382,7 @@ export default function Combos({
           {state.refreshing ? t("common.loading") : ""}
         </span>
         <ComboWorkspace
+          apiBase={apiBase}
           combos={combos}
           providerQuotaStates={providerQuotaStates}
           providers={providers}

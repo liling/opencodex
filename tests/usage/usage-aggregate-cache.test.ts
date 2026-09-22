@@ -13,6 +13,7 @@ import {
 import { APP_OWNED_RETAINED_STORE_REGISTRATIONS } from "../../src/lib/app-owned-memory-stores";
 import {
   getFilteredUsageAggregate,
+  getJevStatsAggregate,
   getUsageAggregate,
   resetUsageAggregateCacheForTests,
   usageAggregateRetainedStats,
@@ -79,6 +80,104 @@ afterEach(() => {
 });
 
 describe("retained usage aggregate cache", () => {
+  test("JEV projections share a cold scan and read only a verified append suffix", async () => {
+    const path = join(testDir, "usage.jsonl");
+    const jevEntry = (requestId: string, model: string): PersistedUsageEntry => ({
+      requestId,
+      timestamp: NOW,
+      provider: "combo",
+      model: "jev-auto",
+      status: 200,
+      durationMs: 2,
+      usageStatus: "reported",
+      jevDecision: {
+        version: 1,
+        comboId: "jev-auto",
+        selected: { provider: "openai", model, effort: "high" },
+        gate: "apply",
+        latencyMs: 1,
+      },
+      attempts: [{
+        ordinal: 1,
+        provider: "openai",
+        model,
+        adapter: "openai-responses",
+        status: 200,
+        durationMs: 1,
+        sendCount: 1,
+        recoveryKinds: [],
+        usageStatus: "reported",
+        usage: { inputTokens: 1, outputTokens: 1 },
+        totalTokens: 2,
+      }],
+    });
+    writeFileSync(path, `${JSON.stringify(jevEntry("one", "gpt-6-astra"))}\n`);
+    const originalScan = usageLedgerScannerModule.scanUsageLedgerCooperatively;
+    const scanStarts: number[] = [];
+    const scanSpy = spyOn(usageLedgerScannerModule, "scanUsageLedgerCooperatively")
+      .mockImplementation(async options => {
+        scanStarts.push(options.startAtBytes ?? 0);
+        return originalScan(options);
+      });
+    try {
+      const [first, shared] = await Promise.all([
+        getJevStatsAggregate({ comboId: "jev-auto" }),
+        getJevStatsAggregate({ comboId: "jev-auto" }),
+      ]);
+      expect(first.accumulator).toBe(shared.accumulator);
+      expect(first.accumulator.summarize("all", NOW).summary.decisions).toBe(1);
+      expect((await getJevStatsAggregate({ comboId: "jev-auto" })).update).toBe("unchanged");
+      expect(scanStarts).toEqual([0]);
+
+      appendFileSync(path, `${JSON.stringify(jevEntry("two", "gpt-5.6-sol"))}\n`);
+      const appended = await getJevStatsAggregate({ comboId: "jev-auto" });
+      expect(appended.update).toBe("append");
+      expect(appended.accumulator.summarize("all", NOW).summary.decisions).toBe(2);
+      expect(scanStarts).toHaveLength(2);
+      expect(scanStarts[1]).toBeGreaterThan(0);
+    } finally {
+      scanSpy.mockRestore();
+    }
+  });
+
+  test("a JEV rebuild retry discards the partially mutated accumulator", async () => {
+    const row: PersistedUsageEntry = {
+      requestId: "one",
+      timestamp: NOW,
+      provider: "combo",
+      model: "jev-auto",
+      status: 200,
+      durationMs: 1,
+      usageStatus: "unreported",
+      jevDecision: {
+        version: 1,
+        comboId: "jev-auto",
+        selected: { provider: "openai", model: "gpt-6-astra", effort: "high" },
+        gate: "apply",
+        latencyMs: 1,
+      },
+    };
+    writeFileSync(join(testDir, "usage.jsonl"), `${JSON.stringify(row)}\n`);
+    const originalScan = usageLedgerScannerModule.scanUsageLedgerCooperatively;
+    let calls = 0;
+    const scanSpy = spyOn(usageLedgerScannerModule, "scanUsageLedgerCooperatively")
+      .mockImplementation(async options => {
+        calls += 1;
+        if (calls === 1) {
+          options.onEntry(row);
+          throw new usageLedgerScannerModule.UsageLedgerRebuildRequiredError("content_changed");
+        }
+        return originalScan(options);
+      });
+    try {
+      const result = await getJevStatsAggregate({ comboId: "jev-auto" });
+      expect(calls).toBe(2);
+      expect(result.accumulator.summarize("all", NOW).summary.decisions).toBe(1);
+    } finally {
+      scanSpy.mockRestore();
+    }
+  });
+
   test.each(["message_start", "message_delta"].flatMap(phase =>
     ["bad", [], null, false, 7, { output_tokens: "bad" }].map(usage => ({ phase, usage })),
   ))("malformed streamed usage at $phase stays unreported after a valid update: $usage", async ({ phase, usage }) => {

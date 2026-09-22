@@ -75,6 +75,7 @@ import type { ResponsesTerminalStatus } from "../../bridge";
 import { beginRequestAttempt, sealRequestAttemptIdentity, finishRequestAttempt } from "../request-log";
 import { rememberComboForLane } from "./combo-session-recall";
 import { runTurnAdapterSseResponses } from "./core-lifetime";
+import { normalizePersistedJevDecision } from "../../usage/jev-stats";
 import {
   isNativePassthroughSseResponse,
   isEagerRelaySseResponse,
@@ -504,6 +505,22 @@ export async function executeComboResponses(
     jevDecision = decision;
     const selected = choices.find(choice => choice.candidate.key === decision.targetKey) ?? first;
     pick = { ...selected.pick, attempted: [targetKey(selected.pick.target)] };
+    logCtx.jevDecision = normalizePersistedJevDecision({
+      version: 1,
+      comboId,
+      selected: {
+        provider: selected.pick.target.provider,
+        model: selected.pick.target.model,
+        effort: decision.effort,
+      },
+      gate: decision.gate,
+      latencyMs: decision.latencyMs,
+      ...(decision.confidence !== undefined ? { confidence: decision.confidence } : {}),
+      ...(decision.chosenProbability !== undefined
+        ? { chosenProbability: decision.chosenProbability }
+        : {}),
+      ...(decision.usage ? { usage: decision.usage } : {}),
+    });
     console.debug("[combo] JEV decision", {
       targetKey: decision.targetKey,
       effort: decision.effort,

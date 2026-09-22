@@ -87,6 +87,9 @@ available Astra/Sol/Luna rows, remains fully editable, marks the first eligible 
 and displays known effort ladders. The JEV provider is hidden from the target picker because it owns
 only the decision credential. Existing model rows, default selection, and direct picker behavior are
 unchanged; an existing `jev-auto` id or alias disables or reports the quick action.
+An existing JEV Combo adds a lazy **Stats** detail tab. It polls only while visible, uses the
+management API's JEV projection, and keeps decision-service tokens separate from physical model
+tokens. Config remains the ordinary editable Combo form, including per-target effort allowlists.
 
 The native-main reauth poller captures an immutable accepted flow id for queued callbacks.
 Its POST, GET and DELETE JSON reads retain API error codes, but non-2xx responses never
@@ -237,6 +240,14 @@ ordinary appends. It does not retain the full input or a normalized object for e
 neither the old byte window nor the parsed-entry cap can discard an earlier prefix before range and
 surface filtering. `managementUsageMaxReadBytes` remains a recognized compatibility setting for
 bounded legacy readers, but it is not an accuracy limit or tuning knob for `GET /api/usage`.
+`src/usage/jev-stats.ts` owns the parallel content-free JEV projection. Its retained accumulator is
+keyed by Combo and stable preset boundary, shares concurrent reads, verifies append identity and LF
+digest, clones before folding a suffix, and starts a fresh accumulator after a rebuild-required
+scan. It counts physical sends from `attempts[].sendCount`, ignores zero-send rows for fallback
+detection, and folds identities beyond 255 concrete rows into one explicit overflow row while
+preserving global totals. Up to four JEV projections participate in the same app-owned memory budget
+and eviction path as ordinary usage aggregates. Read failure returns HTTP 500 rather than a partial
+projection.
 A Codex-surface response also includes an `accounts` breakdown keyed by the stable non-PII
 `accountLogLabel`; current cards join those rows to the management account DTO and show the 30-day
 token total, API-equivalent cost estimate, and measurement coverage. New main-pool rows use `main`,

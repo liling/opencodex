@@ -196,6 +196,9 @@ const INTENTIONAL_ENGLISH = new Set<TKey>([
   "api.colSource",
   "api.testSucceeded",
   "cws.count.total",
+  // Both labels are ordinary French words with the same spelling and meaning.
+  "cws.jev.stats.efforts",
+  "cws.jev.stats.total",
   "claudeDesktop.alias",
   "lab.filter.verdict",
   "lab.col.suite",

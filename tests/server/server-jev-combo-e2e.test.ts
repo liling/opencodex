@@ -106,6 +106,7 @@ async function execute(
   handler: ChildHandler,
   raw: Record<string, unknown> = {},
   signal?: AbortSignal,
+  parentLogCtx: RequestLogContext = { model: "", provider: "" },
 ): Promise<Response> {
   const body = {
     model: "jev-auto",
@@ -125,7 +126,7 @@ async function execute(
       body,
       "auto",
       config,
-      { model: "", provider: "" },
+      parentLogCtx,
       { translatorBudget: budget, ...(signal ? { abortSignal: signal } : {}) },
       dispatchers(handler),
     );
@@ -150,6 +151,35 @@ function success(model: string): Response {
 }
 
 describe("JEV Combo runtime", () => {
+  test("records the selected target and JEV usage on the parent request", async () => {
+    const config = makeConfig({
+      jevFetch: (async () => Response.json({
+        answers: { route: { choice: "sol/gpt-5.6-sol:high", confidence: 0.8 } },
+        usage: { input_tokens: 11, output_tokens: 2 },
+      })) as typeof fetch,
+    });
+    const parentLogCtx: RequestLogContext = { model: "", provider: "" };
+
+    const response = await execute(
+      config,
+      body => success(String(body.model)),
+      {},
+      undefined,
+      parentLogCtx,
+    );
+
+    expect(response.status).toBe(200);
+    expect(parentLogCtx.jevDecision).toEqual({
+      version: 1,
+      comboId: "auto",
+      selected: { provider: "sol", model: "gpt-5.6-sol", effort: "high" },
+      gate: "apply",
+      latencyMs: expect.any(Number),
+      confidence: 0.8,
+      usage: { inputTokens: 11, outputTokens: 2, totalTokens: 13 },
+    });
+  });
+
   test("routes the initial call to JEV's allowlisted target and keeps direct/catalog rows", async () => {
     const jevRequests: Array<Record<string, unknown>> = [];
     const config = makeConfig({

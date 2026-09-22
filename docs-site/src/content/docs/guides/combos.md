@@ -287,6 +287,13 @@ target/effort, a coarse decision gate, latency, optional confidence/probability,
 Automated tests use mocked TypeSafe responses plus a no-key fail-open smoke; a live TypeSafe decision
 requires an operator-supplied key and is not run implicitly.
 
+After the Combo has served requests, open **Models → Combos → jev-auto → Stats** to inspect JEV's
+picks without replacing the normal model picker or Usage page. The tab separates TypeSafe decision
+tokens from tokens reported by physical model sends, and shows decision gates, fail-open picks,
+reasoning efforts, retries/fallbacks, cache tokens, latency, confidence, and per-model totals for 7
+days, 30 days, or all available history. Statistics come from the local append-only usage ledger;
+they contain the bounded decision metadata described above, not prompts or credentials.
+
 ## What happens when a target fails
 
 Combo failures are divided into **hop** failures and **terminal** failures.
