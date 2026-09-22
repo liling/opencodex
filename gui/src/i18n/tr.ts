@@ -2688,7 +2688,7 @@ export const tr: Record<TKey, string> = {
   "cws.jev.allowedEfforts": "JEV şunları seçebilir",
   "cws.jev.efforts": "Akıl yürütme eforları: {efforts}",
   "cws.jev.effortsUnknown": "Akıl yürütme eforları belirtilmedi",
-  "cws.jev.effortsNone": "Açık akıl yürütme eforu yok",
+  "cws.jev.effortsNone": "Açıkça belirtilmiş bir akıl yürütme eforu yok",
   "cws.railAria": "Kombo listesi",
   "cws.searchPlaceholder": "Kombolarda veya hedeflerde ara…",
   "cws.noSearchResults": "Aramanızla eşleşen kombo yok.",

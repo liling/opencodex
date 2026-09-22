@@ -2788,7 +2788,7 @@ export const ru: Record<TKey, string> = {
   "cws.create": "Создать комбо",
   "cws.jev.create": "Создать JEV Auto",
   "cws.jev.exists": "JEV Auto уже существует.",
-  "cws.jev.setupHint": "Создаёт необязательный, полностью редактируемый комбо. JEV выбирает разрешённую цель и уровень рассуждения для каждого запроса.",
+  "cws.jev.setupHint": "Создаёт необязательное, полностью редактируемое комбо. JEV выбирает разрешённую цель и уровень рассуждения для каждого запроса.",
   "cws.jev.failOpen": "Цель fail-open",
   "cws.jev.allowedEfforts": "JEV может выбрать",
   "cws.jev.efforts": "Уровни рассуждения: {efforts}",

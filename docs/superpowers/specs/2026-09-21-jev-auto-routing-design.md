@@ -23,8 +23,8 @@ and security boundaries, not a copy of its HTTP relay.
 1. Installing or enabling JEV does not hide, rename, disable, reorder, or
    redirect any existing model.
 2. JEV is never made the default model automatically.
-3. Enabling the integration publishes exactly one additional public selector,
-   `jev-auto`, with display name `JEV Auto`.
+3. After the operator creates the JEV Combo, the integration publishes exactly
+   one additional public selector, `jev-auto`, with display name `JEV Auto`.
 4. Selecting any ordinary model bypasses JEV completely.
 5. Removing or disabling the JEV Auto combo removes only `jev-auto`; candidate
    models remain available individually.
