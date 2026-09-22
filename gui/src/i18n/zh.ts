@@ -2676,7 +2676,7 @@ export const zh: Record<TKey, string> = {
   "cws.jev.stats.emptyTitle": "尚无 JEV 决策",
   "cws.jev.stats.emptyBody": "运行此组合以记录选择和模型 Token 用量。启用统计支持之前的决策不可用。",
   "cws.jev.stats.decisions": "决策",
-  "cws.jev.stats.appliedAndFailOpen": "已应用 {applied} · Fail-open {failOpen}",
+  "cws.jev.stats.appliedAndFailOpen": "已应用 {applied} · 故障开放 {failOpen}",
   "cws.jev.stats.modelTokens": "模型 Token",
   "cws.jev.stats.decisionTokens": "JEV 决策 Token",
   "cws.jev.stats.measuredAttempts": "已测量 {measured}/{total} 次尝试",

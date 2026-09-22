@@ -8,7 +8,7 @@
 
 **Tech Stack:** Bun, TypeScript, OpenCodex Combo runtime, provider registry/management API, React/Vite GUI, Bun test runner.
 
-**Spec:** `docs/superpowers/specs/2026-09-21-jev-auto-routing-design.md`
+**Spec:** `devlog/_plan/260921_jev_auto_routing/000_design.md`
 
 ## Global Constraints
 

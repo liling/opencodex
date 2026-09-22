@@ -140,6 +140,85 @@ describe("retained usage aggregate cache", () => {
     }
   });
 
+  test("JEV cold rebuild and suffix append saturate persisted numeric totals", async () => {
+    const path = join(testDir, "usage.jsonl");
+    const maximum = Number.MAX_SAFE_INTEGER;
+    const hugePersistedValue = 1e308;
+    const jevEntry = (requestId: string): PersistedUsageEntry => ({
+      requestId,
+      timestamp: NOW,
+      provider: "combo",
+      model: "jev-auto",
+      status: 200,
+      durationMs: 1,
+      usageStatus: "reported",
+      jevDecision: {
+        version: 1,
+        comboId: "jev-auto",
+        selected: { provider: "openai", model: "gpt-6-astra", effort: "high" },
+        gate: "apply",
+        latencyMs: hugePersistedValue,
+        usage: {
+          inputTokens: hugePersistedValue,
+          outputTokens: hugePersistedValue,
+          totalTokens: hugePersistedValue,
+        },
+      },
+      attempts: [{
+        ordinal: 1,
+        provider: "openai",
+        model: "gpt-6-astra",
+        adapter: "openai-responses",
+        status: 200,
+        durationMs: 1,
+        sendCount: hugePersistedValue,
+        recoveryKinds: [],
+        usageStatus: "reported",
+        usage: {
+          inputTokens: hugePersistedValue,
+          outputTokens: hugePersistedValue,
+          reasoningOutputTokens: hugePersistedValue,
+          cacheReadInputTokens: hugePersistedValue,
+          cacheCreationInputTokens: hugePersistedValue,
+        },
+        totalTokens: hugePersistedValue,
+      }],
+    });
+    const assertSaturated = (summary: ReturnType<Awaited<ReturnType<typeof getJevStatsAggregate>>["accumulator"]["summarize"]>) => {
+      expect(summary.summary).toMatchObject({
+        modelAttempts: maximum,
+        modelInputTokens: maximum,
+        modelOutputTokens: maximum,
+        modelReasoningTokens: maximum,
+        modelCacheReadTokens: maximum,
+        modelCacheWriteTokens: maximum,
+        modelTotalTokens: maximum,
+        decisionInputTokens: maximum,
+        decisionOutputTokens: maximum,
+        decisionTotalTokens: maximum,
+        averageLatencyMs: maximum,
+      });
+      expect(summary.models[0]).toMatchObject({
+        attempts: maximum,
+        inputTokens: maximum,
+        outputTokens: maximum,
+        reasoningTokens: maximum,
+        cacheReadTokens: maximum,
+        cacheWriteTokens: maximum,
+        totalTokens: maximum,
+      });
+    };
+
+    writeFileSync(path, `${JSON.stringify(jevEntry("one"))}\n${JSON.stringify(jevEntry("two"))}\n`);
+    const rebuilt = await getJevStatsAggregate({ comboId: "jev-auto" });
+    assertSaturated(rebuilt.accumulator.summarize("all", NOW));
+
+    appendFileSync(path, `${JSON.stringify(jevEntry("three"))}\n`);
+    const appended = await getJevStatsAggregate({ comboId: "jev-auto" });
+    expect(appended.update).toBe("append");
+    assertSaturated(appended.accumulator.summarize("all", NOW));
+  });
+
   test("a JEV rebuild retry discards the partially mutated accumulator", async () => {
     const row: PersistedUsageEntry = {
       requestId: "one",

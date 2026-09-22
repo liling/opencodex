@@ -154,3 +154,27 @@ test("JEV stats shows picks, model tokens and separately labelled decision token
   await flush();
   expect(requests.some(url => url.includes("range=7d"))).toBeTrue();
 });
+
+test("JEV stats renders the fail-open summary in Simplified Chinese", async () => {
+  localStorage.setItem("ocx-lang", "zh");
+  Object.defineProperty(globalThis, "fetch", {
+    configurable: true,
+    value: async () => Response.json(response),
+  });
+  const { createRoot } = await import("react-dom/client");
+  const host = document.createElement("div");
+  document.body.append(host);
+  root = createRoot(host);
+
+  await act(async () => {
+    root!.render(
+      <LanguageProvider>
+        <JevStatsPanel apiBase="" comboId="jev-auto" active />
+      </LanguageProvider>,
+    );
+  });
+  await flush();
+
+  expect(host.textContent).toContain("已应用 2 · 故障开放 1");
+  expect(host.textContent).not.toContain("Fail-open");
+});

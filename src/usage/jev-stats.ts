@@ -128,6 +128,13 @@ function boundedCount(value: unknown): number | undefined {
   return Math.min(Number.MAX_SAFE_INTEGER, Math.round(value));
 }
 
+function saturatingAdd(total: number, value: number): number {
+  if (!Number.isFinite(value) || value <= 0) return total;
+  return total >= Number.MAX_SAFE_INTEGER - value
+    ? Number.MAX_SAFE_INTEGER
+    : total + value;
+}
+
 function probability(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 1
     ? value
@@ -142,7 +149,7 @@ function normalizedDecisionUsage(value: unknown): PersistedJevDecisionV1["usage"
   return {
     inputTokens,
     outputTokens,
-    totalTokens: Math.min(Number.MAX_SAFE_INTEGER, inputTokens + outputTokens),
+    totalTokens: saturatingAdd(inputTokens, outputTokens),
   };
 }
 
@@ -202,11 +209,18 @@ function cacheReadTokens(usage: NonNullable<NonNullable<PersistedUsageEntry["att
 }
 
 function finiteToken(value: number | undefined): number {
-  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : 0;
+  if (typeof value !== "number" || Number.isNaN(value) || value < 0) return 0;
+  return Math.min(Number.MAX_SAFE_INTEGER, value);
 }
 
 function mean(total: number, count: number): number | null {
   return count > 0 ? total / count : null;
+}
+
+function nextMean(current: number | null, count: number, value: number): number {
+  if (current === null || count === 0) return value;
+  if (count >= Number.MAX_SAFE_INTEGER) return current;
+  return current + (value - current) / (count + 1);
 }
 
 function modelKey(provider: string, model: string): string {
@@ -273,7 +287,7 @@ class StreamingJevStatsAccumulator implements JevStatsAccumulator {
   private decisionInputTokens = 0;
   private decisionOutputTokens = 0;
   private decisionTotalTokens = 0;
-  private latencyTotal = 0;
+  private averageLatencyMs: number | null = null;
   private confidenceTotal = 0;
   private confidenceCount = 0;
   private probabilityTotal = 0;
@@ -326,33 +340,35 @@ class StreamingJevStatsAccumulator implements JevStatsAccumulator {
     const decision = normalizePersistedJevDecision(entry.jevDecision);
     if (!decision || (this.comboId !== null && decision.comboId !== this.comboId)) return;
 
-    this.decisions += 1;
-    this.latencyTotal += decision.latencyMs;
-    if (decision.gate === "apply") this.appliedDecisions += 1;
-    if (entry.status >= 200 && entry.status < 400) this.successfulRequests += 1;
-    this.gates.set(decision.gate, (this.gates.get(decision.gate) ?? 0) + 1);
+    this.averageLatencyMs = nextMean(this.averageLatencyMs, this.decisions, decision.latencyMs);
+    this.decisions = saturatingAdd(this.decisions, 1);
+    if (decision.gate === "apply") this.appliedDecisions = saturatingAdd(this.appliedDecisions, 1);
+    if (entry.status >= 200 && entry.status < 400) {
+      this.successfulRequests = saturatingAdd(this.successfulRequests, 1);
+    }
+    this.gates.set(decision.gate, saturatingAdd(this.gates.get(decision.gate) ?? 0, 1));
     if (decision.confidence !== undefined) {
-      this.confidenceTotal += decision.confidence;
-      this.confidenceCount += 1;
+      this.confidenceTotal = saturatingAdd(this.confidenceTotal, decision.confidence);
+      this.confidenceCount = saturatingAdd(this.confidenceCount, 1);
     }
     if (decision.chosenProbability !== undefined) {
-      this.probabilityTotal += decision.chosenProbability;
-      this.probabilityCount += 1;
+      this.probabilityTotal = saturatingAdd(this.probabilityTotal, decision.chosenProbability);
+      this.probabilityCount = saturatingAdd(this.probabilityCount, 1);
     }
     if (decision.usage) {
-      this.decisionUsageReported += 1;
-      this.decisionInputTokens += decision.usage.inputTokens;
-      this.decisionOutputTokens += decision.usage.outputTokens;
-      this.decisionTotalTokens += decision.usage.totalTokens;
+      this.decisionUsageReported = saturatingAdd(this.decisionUsageReported, 1);
+      this.decisionInputTokens = saturatingAdd(this.decisionInputTokens, decision.usage.inputTokens);
+      this.decisionOutputTokens = saturatingAdd(this.decisionOutputTokens, decision.usage.outputTokens);
+      this.decisionTotalTokens = saturatingAdd(this.decisionTotalTokens, decision.usage.totalTokens);
     }
 
     const selected = this.rowFor(decision.selected.provider, decision.selected.model);
-    selected.picks += 1;
-    if (decision.gate === "apply") selected.appliedPicks += 1;
-    else selected.failOpenPicks += 1;
+    selected.picks = saturatingAdd(selected.picks, 1);
+    if (decision.gate === "apply") selected.appliedPicks = saturatingAdd(selected.appliedPicks, 1);
+    else selected.failOpenPicks = saturatingAdd(selected.failOpenPicks, 1);
     selected.effortCounts.set(
       decision.selected.effort,
-      (selected.effortCounts.get(decision.selected.effort) ?? 0) + 1,
+      saturatingAdd(selected.effortCounts.get(decision.selected.effort) ?? 0, 1),
     );
 
     const attempts = (entry.attempts ?? []).flatMap(attempt => {
@@ -364,33 +380,33 @@ class StreamingJevStatsAccumulator implements JevStatsAccumulator {
     });
     if (attempts.some(({ provider, model }) => provider !== decision.selected.provider
       || model !== decision.selected.model)) {
-      this.requestsWithModelFallback += 1;
+      this.requestsWithModelFallback = saturatingAdd(this.requestsWithModelFallback, 1);
     }
     for (const { attempt, provider, model: modelId, sendCount } of attempts) {
       const model = this.rowFor(provider, modelId);
-      model.attempts += sendCount;
-      this.modelAttempts += sendCount;
+      model.attempts = saturatingAdd(model.attempts, sendCount);
+      this.modelAttempts = saturatingAdd(this.modelAttempts, sendCount);
       if (!attempt.usage || (attempt.usageStatus !== "reported" && attempt.usageStatus !== "estimated")) continue;
-      model.measuredAttempts += 1;
-      this.measuredModelAttempts += 1;
+      model.measuredAttempts = saturatingAdd(model.measuredAttempts, 1);
+      this.measuredModelAttempts = saturatingAdd(this.measuredModelAttempts, 1);
       const inputTokens = finiteToken(attempt.usage.inputTokens);
       const outputTokens = finiteToken(attempt.usage.outputTokens);
       const reasoningTokens = finiteToken(attempt.usage.reasoningOutputTokens);
       const readTokens = finiteToken(cacheReadTokens(attempt.usage));
       const writeTokens = finiteToken(attempt.usage.cacheCreationInputTokens);
       const totalTokens = finiteToken(usageDisplayTotalTokens(attempt.usage, attempt.totalTokens));
-      model.inputTokens += inputTokens;
-      model.outputTokens += outputTokens;
-      model.reasoningTokens += reasoningTokens;
-      model.cacheReadTokens += readTokens;
-      model.cacheWriteTokens += writeTokens;
-      model.totalTokens += totalTokens;
-      this.modelInputTokens += inputTokens;
-      this.modelOutputTokens += outputTokens;
-      this.modelReasoningTokens += reasoningTokens;
-      this.modelCacheReadTokens += readTokens;
-      this.modelCacheWriteTokens += writeTokens;
-      this.modelTotalTokens += totalTokens;
+      model.inputTokens = saturatingAdd(model.inputTokens, inputTokens);
+      model.outputTokens = saturatingAdd(model.outputTokens, outputTokens);
+      model.reasoningTokens = saturatingAdd(model.reasoningTokens, reasoningTokens);
+      model.cacheReadTokens = saturatingAdd(model.cacheReadTokens, readTokens);
+      model.cacheWriteTokens = saturatingAdd(model.cacheWriteTokens, writeTokens);
+      model.totalTokens = saturatingAdd(model.totalTokens, totalTokens);
+      this.modelInputTokens = saturatingAdd(this.modelInputTokens, inputTokens);
+      this.modelOutputTokens = saturatingAdd(this.modelOutputTokens, outputTokens);
+      this.modelReasoningTokens = saturatingAdd(this.modelReasoningTokens, reasoningTokens);
+      this.modelCacheReadTokens = saturatingAdd(this.modelCacheReadTokens, readTokens);
+      this.modelCacheWriteTokens = saturatingAdd(this.modelCacheWriteTokens, writeTokens);
+      this.modelTotalTokens = saturatingAdd(this.modelTotalTokens, totalTokens);
     }
   }
 
@@ -421,7 +437,7 @@ class StreamingJevStatsAccumulator implements JevStatsAccumulator {
     cloned.decisionInputTokens = this.decisionInputTokens;
     cloned.decisionOutputTokens = this.decisionOutputTokens;
     cloned.decisionTotalTokens = this.decisionTotalTokens;
-    cloned.latencyTotal = this.latencyTotal;
+    cloned.averageLatencyMs = this.averageLatencyMs;
     cloned.confidenceTotal = this.confidenceTotal;
     cloned.confidenceCount = this.confidenceCount;
     cloned.probabilityTotal = this.probabilityTotal;
@@ -463,7 +479,7 @@ class StreamingJevStatsAccumulator implements JevStatsAccumulator {
         decisionInputTokens: this.decisionInputTokens,
         decisionOutputTokens: this.decisionOutputTokens,
         decisionTotalTokens: this.decisionTotalTokens,
-        averageLatencyMs: mean(this.latencyTotal, this.decisions),
+        averageLatencyMs: this.averageLatencyMs,
         averageConfidence: mean(this.confidenceTotal, this.confidenceCount),
         averageChosenProbability: mean(this.probabilityTotal, this.probabilityCount),
       },

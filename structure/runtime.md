@@ -397,12 +397,6 @@ Automatic Codex pool selection and account status share the [plan exclusion cont
 `src/web-search/loop.ts` makes at most one extra answer attempt after a clean forced-answer terminal with no visible output or tool call. The recovery has no tools and reuses gathered search results. Malformed calls fail before refusal/truncation passthrough, and well-formed recognized refusal/truncation terminals pass through unchanged, including empty or partial answers. The extra generation may incur provider usage.
 
 OpenAI sidecar 429 replays run only when their backoff fits the remaining sidecar deadline; otherwise the original 429 remains the routing-health outcome rather than becoming a timeout. Reset recovery and 429 replays share one three-send budget per search, so the two layers cannot multiply physical sends.
-
-## JEV Combo decision boundary
-
-The bounded JEV first-pick runtime, privacy boundary, and one-decision fallback contract are specified
-with the [TypeSafe JEV decision provider](providers-and-adapters.md#typesafe-jev-decision-provider).
-
 ## Scoped provider quota for Combo selection
 
 `src/providers/quota/report-cache.ts` publishes routing evidence only when a producer explicitly supplies its
