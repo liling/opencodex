@@ -1167,6 +1167,11 @@ export interface OcxComboTarget {
    * see `OcxComboConfig.cooldownWaitPolicy` (#5691).
    */
   lastResort?: boolean;
+  /**
+   * Exact efforts JEV may choose for this target. Omit to allow every effort the
+   * target currently advertises; an explicit list must be non-empty.
+   */
+  reasoningEfforts?: OcxComboDefaultEffort[];
 }
 
 export interface OcxComboConfig {

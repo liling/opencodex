@@ -364,10 +364,40 @@
 
 .cwi-jev-target-meta {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
+  flex-wrap: wrap;
   gap: 8px;
   padding-left: 72px;
   font-size: var(--text-label);
+}
+
+.cwi-jev-efforts {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.cwi-jev-efforts legend {
+  float: left;
+  margin: 2px 2px 0 0;
+  color: var(--muted);
+}
+
+.cwi-jev-effort {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  color: var(--text);
+}
+
+.cwi-jev-effort:has(input:disabled) {
+  cursor: not-allowed;
 }
 
 .cwi-jev-quick-action {

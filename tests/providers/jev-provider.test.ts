@@ -6,6 +6,7 @@ import {
 import { captureProviderGather } from "../../src/codex/catalog/gather-capture";
 import { deriveKeyLoginMap, providerConfigSeed } from "../../src/providers/derive";
 import { getProviderRegistryEntry } from "../../src/providers/registry";
+import { KEY_LOGIN_PROVIDERS, validateApiKey } from "../../src/oauth/key-providers";
 
 describe("TypeSafe JEV provider preset", () => {
   test("stores a paid decision-service credential without publishing a model", async () => {
@@ -21,6 +22,7 @@ describe("TypeSafe JEV provider preset", () => {
       dashboardUrl: "https://console.typesafe.ai",
       liveModels: false,
       preserveCustomDestination: true,
+      apiKeyValidation: "unknown",
     });
     expect(entry?.freeTier).not.toBe(true);
     expect(entry?.models).toBeUndefined();
@@ -49,5 +51,23 @@ describe("TypeSafe JEV provider preset", () => {
     );
     expect(result.models).toEqual([]);
     expect(result.outcome.state).toBe("authoritative");
+  });
+
+  test("CLI key login accepts JEV without probing a model-catalog endpoint", async () => {
+    const originalFetchDescriptor = Object.getOwnPropertyDescriptor(globalThis, "fetch")!;
+    let fetchCalls = 0;
+    Object.defineProperty(globalThis, "fetch", {
+      configurable: true,
+      value: async () => {
+        fetchCalls += 1;
+        return new Response(null, { status: 500 });
+      },
+    });
+    try {
+      expect(await validateApiKey("jev", KEY_LOGIN_PROVIDERS.jev!, "test-jev-key")).toBe("unknown");
+      expect(fetchCalls).toBe(0);
+    } finally {
+      Object.defineProperty(globalThis, "fetch", originalFetchDescriptor);
+    }
   });
 });

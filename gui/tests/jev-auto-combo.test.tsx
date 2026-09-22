@@ -1,16 +1,17 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import { Window } from "happy-dom";
-import { act } from "react";
+import { act, useState } from "react";
 import type { Root } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
 import ComboWorkspace from "../src/components/ComboWorkspace";
 import { TargetEditor } from "../src/components/combo-workspace-controls";
 import ProviderDetails from "../src/components/provider-workspace/ProviderDetails";
+import ProviderAuthPanel from "../src/components/provider-workspace/ProviderAuthPanel";
 import { LanguageProvider } from "../src/i18n/provider";
 import Combos from "../src/pages/Combos";
 import { navigateHash } from "../src/hash-routing";
 import { readModelsTab } from "../src/pages/models-tab";
-import { toPutBody, type ComboItem } from "../src/combo-workspace-data";
+import { toPutBody, type ComboItem, type ComboTarget } from "../src/combo-workspace-data";
 
 const globals = ["document", "window", "navigator", "localStorage", "IS_REACT_ACT_ENVIRONMENT"] as const;
 let previousGlobals: Record<(typeof globals)[number], unknown>;
@@ -118,7 +119,11 @@ test("Combo workspace exposes JEV Auto and reports an existing selector collisio
     </LanguageProvider>,
   );
   expect(collision).toContain("JEV Auto already exists");
-  expect(collision).toMatch(/disabled=""[^>]*>[^<]*Create JEV Auto|Create JEV Auto[^<]*<\/button>/);
+  const collisionHost = document.createElement("div");
+  collisionHost.innerHTML = collision;
+  const collisionAction = [...collisionHost.querySelectorAll<HTMLButtonElement>("button")]
+    .find(button => button.textContent?.trim() === "Create JEV Auto");
+  expect(collisionAction?.disabled).toBeTrue();
 });
 
 test("JEV fail-open badge skips quota-exhausted targets", () => {
@@ -144,6 +149,110 @@ test("JEV fail-open badge skips quota-exhausted targets", () => {
   expect(entries).toHaveLength(2);
   expect(entries[0]!.querySelector(".chip")).toBeNull();
   expect(entries[1]!.querySelector(".chip")?.textContent).toBe("Fail-open target");
+});
+
+test("JEV target effort checkboxes persist an exact non-empty subset and reset for a new model", async () => {
+  const { createRoot } = await import("react-dom/client");
+  const host = document.createElement("div");
+  document.body.append(host);
+  root = createRoot(host);
+  let observed: ComboTarget[] = [{ provider: "openai", model: "gpt-6-astra", clientKey: "only" }];
+
+  function Harness() {
+    const [targets, setTargets] = useState(observed);
+    observed = targets;
+    return (
+      <LanguageProvider>
+        <TargetEditor
+          targets={targets}
+          strategy="jev"
+          providers={[{ name: "openai" }]}
+          models={models}
+          providerQuotaStates={{ openai: "available" }}
+          onChange={setTargets}
+        />
+      </LanguageProvider>
+    );
+  }
+
+  await act(async () => { root!.render(<Harness />); });
+  const effortInputs = () => [...host.querySelectorAll<HTMLInputElement>('input[data-jev-effort]')];
+  expect(effortInputs().map(input => [input.value, input.checked])).toEqual([
+    ["medium", true],
+    ["high", true],
+    ["xhigh", true],
+  ]);
+
+  await act(async () => { effortInputs().find(input => input.value === "medium")!.click(); });
+  expect(observed[0]?.reasoningEfforts).toEqual(["high", "xhigh"]);
+  await act(async () => { effortInputs().find(input => input.value === "high")!.click(); });
+  expect(observed[0]?.reasoningEfforts).toEqual(["xhigh"]);
+  expect(effortInputs().find(input => input.value === "xhigh")?.disabled).toBe(true);
+
+  const modelSelect = host.querySelectorAll<HTMLSelectElement>("select")[1]!;
+  await act(async () => { setSelect(modelSelect, "gpt-5.6-sol"); });
+  expect(observed[0]?.reasoningEfforts).toBeUndefined();
+  expect(effortInputs().map(input => [input.value, input.checked])).toEqual([
+    ["low", true],
+    ["medium", true],
+    ["high", true],
+  ]);
+});
+
+test("JEV API key can be saved from the provider GUI", async () => {
+  const { createRoot } = await import("react-dom/client");
+  const host = document.createElement("div");
+  document.body.append(host);
+  root = createRoot(host);
+  const saved: Array<{ provider: string; key: string }> = [];
+
+  await act(async () => {
+    root!.render(
+      <LanguageProvider>
+        <ProviderAuthPanel
+          item={{
+            name: "jev",
+            adapter: "jev-decision",
+            baseUrl: "https://api.typesafe.ai/v1/systemone",
+            authMode: "key",
+            hasApiKey: false,
+          }}
+          apiBase=""
+          authHandlers={{
+            onLogin: () => {},
+            onLogout: () => {},
+            onReauth: () => {},
+            onSwitchAccount: () => {},
+            onRemoveAccount: () => {},
+            onAddApiKey: async (provider, key) => {
+              saved.push({ provider, key });
+              return true;
+            },
+            onSwitchApiKey: () => {},
+            onRemoveApiKey: () => {},
+            onEditAlias: () => {},
+          }}
+        />
+      </LanguageProvider>,
+    );
+  });
+
+  const addButton = [...host.querySelectorAll<HTMLButtonElement>("button")]
+    .find(button => button.textContent?.trim() === "Add API key")!;
+  await act(async () => { addButton.click(); });
+  const input = host.querySelector<HTMLInputElement>('input[type="password"]')!;
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(testWindow.HTMLInputElement.prototype, "value")!
+      .set!.call(input, "test-jev-key");
+    input.dispatchEvent(new testWindow.Event("input", { bubbles: true }));
+  });
+  await flush();
+  const saveButton = [...host.querySelectorAll<HTMLButtonElement>("button")]
+    .find(button => button.textContent?.trim() === "Add API key")!;
+  await act(async () => { saveButton.click(); });
+  await flush();
+
+  expect(saved).toEqual([{ provider: "jev", key: "test-jev-key" }]);
 });
 
 test("configured JEV deep-link opens the shared editable Combo modal and submits the normal PUT", async () => {
@@ -223,7 +332,8 @@ test("configured JEV deep-link opens the shared editable Combo modal and submits
   expect(host.querySelector<HTMLInputElement>("#cwi-new-alias")?.value).toBe("jev-auto");
   expect(host.querySelector('[role="radio"][aria-checked="true"]')?.textContent).toContain("JEV");
   expect(host.textContent).toContain("Fail-open target");
-  expect(host.textContent).toContain("medium, high, xhigh");
+  expect([...dialog!.querySelectorAll<HTMLInputElement>(".cwi-target-entry:first-child input[data-jev-effort]")]
+    .map(input => input.value)).toEqual(["medium", "high", "xhigh"]);
   expect([...dialog!.querySelectorAll<HTMLSelectElement>('select[aria-label="Provider"]')]
     .map(select => select.value)).toEqual(["openai", "openai", "openai"]);
 

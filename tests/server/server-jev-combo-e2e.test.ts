@@ -345,6 +345,38 @@ describe("JEV Combo runtime", () => {
     ]);
   });
 
+  test("offers only each target's configured reasoning efforts and skips stale empty intersections", async () => {
+    const jevRequests: Array<Record<string, unknown>> = [];
+    const config = makeConfig({
+      jevFetch: choiceFetch("sol/gpt-5.6-sol:medium", jevRequests),
+    });
+    config.combos!.auto!.targets = [
+      { ...targetRows[0], reasoningEfforts: ["low", "high", "ultra"] },
+      { ...targetRows[1], reasoningEfforts: ["medium"] },
+      { ...targetRows[2], reasoningEfforts: ["ultra"] },
+    ];
+    const childBodies: Record<string, unknown>[] = [];
+
+    const response = await execute(config, body => {
+      childBodies.push(body);
+      return success(String(body.model));
+    });
+
+    expect(response.status).toBe(200);
+    const criteria = (jevRequests[0]?.questions as {
+      route: { criteria: Record<string, unknown> };
+    }).route.criteria;
+    expect(Object.keys(criteria)).toEqual([
+      "astra/gpt-6-astra:low",
+      "astra/gpt-6-astra:high",
+      "sol/gpt-5.6-sol:medium",
+    ]);
+    expect(childBodies[0]).toMatchObject({
+      model: "sol/gpt-5.6-sol",
+      reasoning: { effort: "medium" },
+    });
+  });
+
   test("re-enumerates JEV choices after waiting for a cooldown to expire", async () => {
     const jevRequests: Array<Record<string, unknown>> = [];
     const config = makeConfig({

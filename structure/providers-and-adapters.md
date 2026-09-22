@@ -111,7 +111,9 @@ OAuth bearer token.
 `https://api.typesafe.ai/v1/systemone` with adapter `jev-decision`. It is a credential owner, not an
 inference route: the registry marks it `credentialOnly`, its adapter is deliberately absent from the
 routable adapter registry, live discovery is disabled, no default/static model is published, and
-Combo validation rejects the decision provider as a target. `src/server/management/provider-routes.ts`
+key login returns unknown without probing a nonexistent model catalog. The normal `ocx login jev`
+flow and provider-workspace API-key panel both persist the same credential-only row. Combo validation
+rejects the decision provider as a target. `src/server/management/provider-routes.ts`
 special-cases its connection test through the same bounded decision client before the generic
 static-catalog branch. The test sends no user prompt and returns only sanitized health status.
 
@@ -132,7 +134,11 @@ Telemetry never retains extracted state or credentials.
 `src/server/responses/core-combo.ts` computes current eligibility, asks JEV once for the initial pick,
 applies the validated effort, and removes caller `service_tier` for that child. A retryable child
 failure re-enters the ordinary Combo fallback loop from the untouched request without another JEV
-call. Direct models and every other Combo strategy bypass this path.
+call. Each target may carry an optional non-empty `reasoningEfforts` allowlist. Omission keeps the
+backward-compatible all-advertised behavior; a present list is intersected with current capabilities,
+and an empty intersection removes that target from the JEV choice map rather than broadening it.
+Direct models and every other Combo strategy bypass this path. The shared Combo editor owns the GUI
+checkboxes and `Create JEV Auto` template; no second model picker or JEV-only editor exists.
 
 The Crusoe preset uses that fixed-key path at `https://api.inference.crusoecloud.com/v1`. Its
 registry-owned policy admits only public rows whose `architecture.modality` is `text` or

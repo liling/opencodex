@@ -129,6 +129,38 @@ describe("combo-workspace-data", () => {
     });
   });
 
+  test("parse, dirty tracking, validation, and PUT preserve exact JEV target efforts", () => {
+    const payload = {
+      combos: [{
+        id: "jev-auto",
+        strategy: "jev",
+        targets: [
+          { provider: "a", model: "m1", reasoningEfforts: ["low", "high"] },
+          { provider: "b", model: "m2" },
+        ],
+      }],
+    };
+    const parsed = parseComboList(payload)[0]!;
+
+    expect(parsed.targets[0]?.reasoningEfforts).toEqual(["low", "high"]);
+    expect(parsed.targets[1]?.reasoningEfforts).toBeUndefined();
+    expect(toPutBody(parsed).combo.targets).toEqual([
+      { provider: "a", model: "m1", reasoningEfforts: ["low", "high"] },
+      { provider: "b", model: "m2" },
+    ]);
+
+    payload.combos[0]!.targets[0]!.reasoningEfforts!.push("max");
+    expect(parsed.targets[0]?.reasoningEfforts).toEqual(["low", "high"]);
+    expect(draftEquals(parsed, {
+      ...parsed,
+      targets: [{ ...parsed.targets[0]!, reasoningEfforts: ["low"] }, parsed.targets[1]!],
+    })).toBe(false);
+    expect(validate(combo({
+      strategy: "jev",
+      targets: [{ provider: "a", model: "m1", reasoningEfforts: [] }],
+    }))).toBe("invalidReasoningEfforts");
+  });
+
   test("JEV Auto template uses the available Astra, Sol, and Luna targets in fail-open order", () => {
     const draft = jevAutoDraft([
       { provider: "native-only", id: "gpt-6-astra", reasoningEfforts: ["medium"] },

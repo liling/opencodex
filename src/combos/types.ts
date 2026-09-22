@@ -1,6 +1,6 @@
 import { isCodexReasoningEffort } from "../reasoning-effort";
 import { SUPPORTED_NATIVE_OPENAI_SLUGS } from "../codex/catalog/native-models";
-import type { OcxComboConfig, OcxComboCooldownWaitPolicy, OcxComboDefaultEffort, OcxComboDefaultEffortMode, OcxComboReasoningEffortMode, OcxComboStrategy, OcxComboTarget, OcxProviderConfig } from "../types";
+import type { OcxComboConfig, OcxComboCooldownWaitPolicy, OcxComboDefaultEffort, OcxComboDefaultEffortMode, OcxComboReasoningEffortMode, OcxComboStrategy, OcxProviderConfig } from "../types";
 import { COMBO_NAMESPACE, isValidComboId, targetKey } from "./identifiers";
 
 export const COMBO_DEFAULT_WAIT_FOR_COOLDOWN_MS = 0;
@@ -18,6 +18,14 @@ const NATIVE_OPENAI_FAMILY_PATTERN = /^(?:gpt-|o1-|o3-|o4-|codex-)/;
 export interface ComboValidationIssue {
   path: Array<string | number>;
   message: string;
+}
+
+export interface NormalizedComboTarget {
+  provider: string;
+  model: string;
+  weight: number;
+  lastResort: boolean;
+  reasoningEfforts?: OcxComboDefaultEffort[];
 }
 
 export interface NormalizedComboConfig {
@@ -40,7 +48,7 @@ export interface NormalizedComboConfig {
   nativeAlias: boolean;
   /** Display-only label for the catalog row, or null when unset. */
   displayName: string | null;
-  targets: Array<Required<OcxComboTarget>>;
+  targets: NormalizedComboTarget[];
 }
 
 /**
@@ -298,6 +306,32 @@ export function comboConfigIssues(
         message: `targets[${i}].lastResort must be a boolean`,
       });
     }
+    if (target.reasoningEfforts !== undefined) {
+      if (!Array.isArray(target.reasoningEfforts) || target.reasoningEfforts.length === 0) {
+        issues.push({
+          path: ["targets", i, "reasoningEfforts"],
+          message: `targets[${i}].reasoningEfforts must be a non-empty array`,
+        });
+      } else {
+        const seenEfforts = new Set<OcxComboDefaultEffort>();
+        for (let effortIndex = 0; effortIndex < target.reasoningEfforts.length; effortIndex++) {
+          const effort = target.reasoningEfforts[effortIndex];
+          if (typeof effort !== "string" || !isCodexReasoningEffort(effort)) {
+            issues.push({
+              path: ["targets", i, "reasoningEfforts", effortIndex],
+              message: `targets[${i}].reasoningEfforts[${effortIndex}] must be one of: low, medium, high, xhigh, max, ultra`,
+            });
+          } else if (seenEfforts.has(effort as OcxComboDefaultEffort)) {
+            issues.push({
+              path: ["targets", i, "reasoningEfforts", effortIndex],
+              message: `targets[${i}].reasoningEfforts must not contain duplicates`,
+            });
+          } else {
+            seenEfforts.add(effort as OcxComboDefaultEffort);
+          }
+        }
+      }
+    }
 
     if (provider && model) {
       const key = targetKey({ provider, model });
@@ -352,6 +386,9 @@ export function normalizeComboConfig(raw: OcxComboConfig): NormalizedComboConfig
       model: target.model.trim(),
       weight: target.weight ?? 1,
       lastResort: target.lastResort === true,
+      ...(target.reasoningEfforts !== undefined
+        ? { reasoningEfforts: [...target.reasoningEfforts] }
+        : {}),
     })),
   };
 }

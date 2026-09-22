@@ -1524,6 +1524,21 @@ describe("combo validation and normalization", () => {
       },
       { raw: { targets: [{ provider: "a", model: " " }] }, path: ["targets", 0, "model"], message: "is required" },
       {
+        raw: { targets: [{ provider: "a", model: "m1", reasoningEfforts: [] }] },
+        path: ["targets", 0, "reasoningEfforts"],
+        message: "non-empty array",
+      },
+      {
+        raw: { targets: [{ provider: "a", model: "m1", reasoningEfforts: ["turbo"] }] },
+        path: ["targets", 0, "reasoningEfforts", 0],
+        message: "low, medium, high, xhigh, max, ultra",
+      },
+      {
+        raw: { targets: [{ provider: "a", model: "m1", reasoningEfforts: ["low", "low"] }] },
+        path: ["targets", 0, "reasoningEfforts", 1],
+        message: "must not contain duplicates",
+      },
+      {
         raw: VALID_COMBO,
         providers: { a: { ...providers.a!, disabled: true } },
         options: { requireEnabledTarget: true },
@@ -1643,6 +1658,13 @@ describe("combo validation and normalization", () => {
     }).targets.map(({ lastResort, ...target }) => (lastResort ? { ...target, lastResort: true } : target));
     expect(Object.hasOwn(sparseTargets[0]!, "lastResort")).toBe(false);
     expect(sparseTargets[1]).toMatchObject({ lastResort: true });
+    const targetReasoningEfforts: OcxComboDefaultEffort[] = ["low", "high"];
+    const normalizedTargetEfforts = normalizeComboConfig({
+      targets: [{ provider: "a", model: "m1", reasoningEfforts: targetReasoningEfforts }],
+    });
+    expect(normalizedTargetEfforts.targets[0]?.reasoningEfforts).toEqual(["low", "high"]);
+    targetReasoningEfforts.push("max");
+    expect(normalizedTargetEfforts.targets[0]?.reasoningEfforts).toEqual(["low", "high"]);
     // Anything that is not the literal "adaptive" normalizes to today's behavior, so a
     // malformed or absent value can never silently opt a user in.
     expect(normalizeComboConfig({ targets: [{ provider: "a", model: "m1" }] }).reasoningEffortMode).toBe("strict");

@@ -122,6 +122,7 @@ export const PROVIDER_REGISTRY_EXTENDED: readonly ProviderRegistryEntry[] = [
     credentialOnly: true,
     dashboardUrl: "https://console.typesafe.ai",
     liveModels: false,
+    apiKeyValidation: "unknown",
     preserveCustomDestination: true,
     note: "TypeSafe JEV decision service for the optional JEV Combo strategy. This credential-only preset does not publish a directly routable model.",
   },

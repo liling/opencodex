@@ -186,7 +186,45 @@ export function jevAutoDraft(models: readonly ModelOption[]): ComboItem;
 - [ ] Run `cd gui && bun test tests`, `cd gui && bun run lint`, `cd gui && bun run lint:i18n`, and `cd gui && bun run build`; expect exit code 0 for each.
 - [ ] Stage the Task 4 files and commit with `git commit -m "feat(gui): add JEV Auto setup flow"`.
 
-## Task 5: Document, review, verify, and publish the PR
+## Task 5: Add per-target JEV effort allowlists and prove key setup
+
+**Files:**
+
+- Modify: `src/types/config.ts`
+- Modify: `src/combos/types.ts`
+- Modify: `src/server/responses/core-combo.ts`
+- Modify: `gui/src/combo-workspace-data.ts`
+- Modify: `gui/src/components/combo-workspace-controls.tsx`
+- Modify: `gui/src/styles-combos-workspace.css`
+- Modify: `gui/src/i18n/*.ts`
+- Modify: focused Combo, JEV runtime, GUI, provider, and CLI-login tests
+
+- [ ] Add failing config and GUI round-trip tests proving an optional non-empty
+  `target.reasoningEfforts` list survives load/save exactly, rejects malformed or
+  duplicate values, participates in dirty-state comparison, and is omitted by
+  older/unrestricted configurations.
+- [ ] Add a failing JEV runtime test proving unchecked efforts are absent from
+  the TypeSafe choice criteria and a configured allowlist is intersected with
+  the target's current supported ladder rather than broadening it.
+- [ ] Implement the smallest typed config/runtime projection. An omitted list
+  means all advertised efforts; a present list means only its supported
+  intersection. A present list with no supported member contributes no JEV
+  target/effort choice.
+- [ ] Add a failing component test for per-target effort checkboxes. All
+  advertised efforts start selected through omission, toggling persists an
+  explicit subset, the final selected effort cannot be removed, and changing
+  provider/model resets the override to all.
+- [ ] Implement those controls in the existing target editor, with accessible
+  labels and localized copy; do not create a JEV-only model picker or alter the
+  ordinary picker.
+- [ ] Add behavioral tests proving the JEV provider exposes the ordinary GUI
+  API-key surface and `ocx login jev` persists a key-backed, credential-only
+  provider without publishing a model. Avoid a spurious model-catalog probe for
+  this decision-only provider.
+- [ ] Run the focused server/GUI/provider/CLI suites and typecheck. Commit with
+  `feat: add per-target JEV effort controls` after fresh tests pass.
+
+## Task 6: Document, review, verify, and publish the PR
 
 **Files:**
 
@@ -202,7 +240,7 @@ export function jevAutoDraft(models: readonly ModelOption[]): ComboItem;
 - [ ] Run `bun run structure:check`, `bun run privacy:scan`, `bun run typecheck`, `bun run test`, `bun run prepush`, and `cd docs-site && bun install --frozen-lockfile && bun run build`. Save complete outputs in the execution workspace and require exit code 0.
 - [ ] Start a disposable local OpenCodex instance with a mocked model target and no TypeSafe key, call `jev-auto`, and verify it reaches the first eligible fail-open target. Use a separate temporary OpenCodex home and ports; never mutate or restart the user's active instance.
 - [ ] Launch the built GUI against a disposable local config, create/open the JEV Auto editor, and capture a screenshot showing the JEV strategy plus editable targets. Do not modify the user's running OpenCodex config.
-- [ ] Generate the execution skill's whole-branch review package from merge-base `dev` to `HEAD`. With no subagent tool available, perform the required separate self-review using `requesting-code-review/code-reviewer.md`, record that limitation, and fix every Critical/Important finding through a new RED→GREEN test before one final full-suite run.
+- [ ] Generate the execution skill's whole-branch review package from merge-base `dev` to `HEAD`. Dispatch the required read-only fresh-context reviewer, then verify and fix every valid Critical/Important finding through a new RED→GREEN test before one final full-suite run.
 - [ ] Run `git diff --check`, verify `git status --short`, and commit documentation/review fixes with Conventional Commits after fresh tests/builds pass.
 - [ ] Push `feat/jev-auto-routing`, create a PR against `dev` using the repository template, include the GUI screenshot and exact test/build evidence, request Codex and Copilot review once, and attach the PR artifact to this task. Do not claim a live TypeSafe decision test.
 
@@ -210,8 +248,8 @@ export function jevAutoDraft(models: readonly ModelOption[]): ComboItem;
 
 - The ordinary picker still contains every pre-existing model unchanged.
 - `jev-auto` appears only after explicit GUI/CLI/API creation.
-- The JEV key can be configured through the provider GUI or `TYPESAFE_API_KEY`.
-- JEV can choose only the operator-selected eligible targets and their supported effort controls.
+- The JEV key can be configured through the provider GUI, `ocx login jev`, or `TYPESAFE_API_KEY`.
+- JEV can choose only the operator-selected eligible targets and each target's operator-selected supported efforts; omitted target effort lists retain the all-advertised default.
 - Every JEV failure mode has a tested first-eligible fail-open path; cancellation has a tested fail-closed 499 path.
 - Retryable selected-target failure uses existing Combo fallback exactly once per target without another JEV call.
 - Root tests/typecheck/privacy/structure/prepush, GUI tests/lint/build, and docs build pass on the final tree.

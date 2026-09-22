@@ -208,13 +208,21 @@ function eligibleJevComboChoices(
       // no-effort choice rather than broadening JEV's effort allowlist.
       ladder = undefined;
     }
+    const supportedEfforts = (ladder ?? []).filter(isCodexReasoningEffort) as OcxComboDefaultEffort[];
+    const configuredEfforts = pick.target.reasoningEfforts;
+    const reasoningEfforts = configuredEfforts === undefined
+      ? supportedEfforts
+      : configuredEfforts.filter(effort => supportedEfforts.includes(effort));
+    // An explicit allowlist is restrictive. If catalog capabilities drift until no configured
+    // effort remains supported, omit the target instead of silently broadening JEV's choices.
+    if (configuredEfforts !== undefined && reasoningEfforts.length === 0) continue;
     choices.push({
       pick: { ...pick, attempted: [key] },
       candidate: {
         key,
         provider: pick.target.provider,
         model: pick.target.model,
-        reasoningEfforts: (ladder ?? []).filter(isCodexReasoningEffort) as OcxComboDefaultEffort[],
+        reasoningEfforts,
       },
     });
   }

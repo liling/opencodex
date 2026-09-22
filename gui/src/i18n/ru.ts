@@ -2790,6 +2790,7 @@ export const ru: Record<TKey, string> = {
   "cws.jev.exists": "JEV Auto уже существует.",
   "cws.jev.setupHint": "Создаёт необязательный, полностью редактируемый комбо. JEV выбирает разрешённую цель и уровень рассуждения для каждого запроса.",
   "cws.jev.failOpen": "Цель fail-open",
+  "cws.jev.allowedEfforts": "JEV может выбрать",
   "cws.jev.efforts": "Уровни рассуждения: {efforts}",
   "cws.jev.effortsUnknown": "Уровни рассуждения не заявлены",
   "cws.jev.effortsNone": "Без явного уровня рассуждения",
@@ -2909,6 +2910,7 @@ export const ru: Record<TKey, string> = {
   "cws.err.duplicateTarget": "Одна и та же цель провайдер/модель может встречаться только один раз.",
   "cws.err.invalidStickyLimit": "Число успешных запросов до ротации должно быть целым от 1 до 100.",
   "cws.err.invalidWeight": "Каждый вес round-robin должен быть целым числом от 1 до 10000.",
+  "cws.err.invalidReasoningEfforts": "Для каждой цели JEV нужно разрешить хотя бы один уникальный поддерживаемый уровень рассуждения.",
   "cws.err.noEnabledTarget": "Хотя бы одна цель должна использовать включённого провайдера.",
 
 

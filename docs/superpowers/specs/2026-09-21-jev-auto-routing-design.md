@@ -93,7 +93,11 @@ of truth:
       "alias": "jev-auto",
       "strategy": "jev",
       "targets": [
-        { "provider": "openai", "model": "gpt-5.6-luna" },
+        {
+          "provider": "openai",
+          "model": "gpt-5.6-luna",
+          "reasoningEfforts": ["low", "medium"]
+        },
         { "provider": "openai", "model": "gpt-5.6-sol" },
         { "provider": "openai", "model": "gpt-6-astra" }
       ],
@@ -106,6 +110,12 @@ of truth:
 The GUI template creates this record only after an explicit user action. It
 filters unavailable seed targets rather than creating broken references. The
 ordinary Combo editor remains authoritative after creation.
+
+Each target may optionally persist a non-empty `reasoningEfforts` allowlist.
+Omitting it preserves the original behavior and offers every reasoning effort
+advertised by that target. When present, JEV receives only the intersection of
+that allowlist and the target's current advertised ladder. A stale allowlist
+must never broaden capability or silently turn into an unrestricted choice.
 
 Target order has one extra meaning for this strategy: the first eligible target
 is the fail-open target when JEV is unavailable or returns an invalid answer.
@@ -253,7 +263,10 @@ Add `JEV` to the existing Combo strategy control. Reuse the current target
 editor and model inventory; do not create a second model picker. The editor:
 
 - marks the first eligible target as the fail-open target,
-- shows each target's available reasoning efforts,
+- shows each target's available reasoning efforts and lets the user select the
+  exact non-empty subset JEV may choose,
+- treats an omitted subset as "all advertised efforts" for backward
+  compatibility and resets that default when the target model changes,
 - prevents direct or indirect self-reference,
 - warns when a target is disabled, missing, or has no usable route,
 - permits saving only when at least one concrete target is valid.
@@ -332,6 +345,9 @@ All TypeSafe traffic is mocked. Tests require no real JEV key.
   never changes the default model
 - target editing round-trips exact provider/model ids and preserves unrelated
   Combo fields
+- target effort editing round-trips an exact non-empty subset and JEV never
+  receives unchecked or newly unsupported efforts
+- the JEV API key can be stored through the provider GUI and `ocx login jev`
 - removal affects only `jev-auto`
 - keyboard, focus, labels, loading, and error states follow existing provider
   and Combo accessibility patterns
@@ -356,6 +372,8 @@ reported separately from mocked and no-key coverage.
 - Enabling the integration adds exactly one opt-in `jev-auto` selector.
 - GUI setup stores or references the TypeSafe key without exposing it.
 - GUI users can choose the concrete models JEV is allowed to select.
+- GUI users can choose the exact advertised efforts JEV is allowed to select
+  for each target, while older configs with no target allowlist still mean all.
 - Every JEV call chooses only from the current eligible candidates and jointly
   selects a compatible effort.
 - Missing or broken JEV fails open predictably without blocking a turn.

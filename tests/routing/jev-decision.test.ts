@@ -512,7 +512,7 @@ describe("JEV decision client", () => {
   });
 
   test("uses a four-second timeout and preserves caller cancellation by identity", async () => {
-    const originalTimeout = AbortSignal.timeout;
+    const originalTimeoutDescriptor = Object.getOwnPropertyDescriptor(AbortSignal, "timeout")!;
     const timeoutReasons: number[] = [];
     Object.defineProperty(AbortSignal, "timeout", {
       configurable: true,
@@ -531,7 +531,7 @@ describe("JEV decision client", () => {
         body: decisionBody, candidates, fallback, config: jevConfig("secret"), post: abortingPost,
       })).toMatchObject({ ...fallback, gate: "timeout" });
     } finally {
-      Object.defineProperty(AbortSignal, "timeout", { configurable: true, value: originalTimeout });
+      Object.defineProperty(AbortSignal, "timeout", originalTimeoutDescriptor);
     }
     expect(timeoutReasons).toEqual([4_000]);
 
