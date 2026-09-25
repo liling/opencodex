@@ -42,6 +42,7 @@ import { validateDevinApiBaseUrl } from "./devin/api-base";
 import { loginGithubCopilot, refreshGithubCopilotToken, validateCopilotApiBaseUrl } from "./github-copilot";
 import { loginCommandCode, refreshCommandCodeToken } from "./command-code";
 import { loginMetaMuse, refreshMetaMuseToken } from "./meta-muse";
+import { loginCodeBuddyOAuth, refreshCodeBuddyOAuth } from "./codebuddy";
 import { loginOrcaRouter, orcaRouterInferenceBaseUrl, refreshOrcaRouterKey } from "./orcarouter";
 import { ANTIGRAVITY_REQUEST_UA } from "../adapters/google-antigravity-wire";
 import { deriveOAuthDefaultModel, deriveOAuthProviderConfig } from "../providers/derive";
@@ -217,6 +218,18 @@ function oauthDefaultModel(id: string): string {
 }
 
 export const OAUTH_PROVIDERS: Record<string, OAuthProviderDef> = {
+  "codebuddy-oauth": {
+    login: ctrl => loginCodeBuddyOAuth("codebuddy-oauth", ctrl),
+    refresh: (rt, signal) => refreshCodeBuddyOAuth("codebuddy-oauth", rt, signal),
+    providerConfig: oauthConfig("codebuddy-oauth"),
+    defaultModel: oauthDefaultModel("codebuddy-oauth"),
+  },
+  "codebuddy-oauth-global": {
+    login: ctrl => loginCodeBuddyOAuth("codebuddy-oauth-global", ctrl),
+    refresh: (rt, signal) => refreshCodeBuddyOAuth("codebuddy-oauth-global", rt, signal),
+    providerConfig: oauthConfig("codebuddy-oauth-global"),
+    defaultModel: oauthDefaultModel("codebuddy-oauth-global"),
+  },
   "command-code": {
     // Add-account/reauth must not reimport the current local CLI credential.
     login: (ctrl, opts) => loginCommandCode(ctrl, { importLocal: opts?.forceLogin ? "off" : "fallback" }),
@@ -1314,6 +1327,22 @@ function isLegacyCommandCodeStaticCatalog(provider: OcxProviderConfig): boolean 
     && JSON.stringify(provider.models) === JSON.stringify(["deepseek-v4-flash", "kimi-k3", "glm-5.2"]);
 }
 
+/** Promote only the exact CodeBuddy OAuth seed that shipped before live discovery was enabled. */
+function isLegacyCodeBuddyOAuthStaticCatalog(providerName: string, provider: OcxProviderConfig): boolean {
+  const region = providerName === "codebuddy-oauth"
+    ? "https://copilot.tencent.com"
+    : providerName === "codebuddy-oauth-global"
+      ? "https://www.codebuddy.ai"
+      : undefined;
+  return region !== undefined
+    && provider.liveModels === false
+    && provider.adapter === "codebuddy-oauth"
+    && provider.authMode === "oauth"
+    && provider.baseUrl === region
+    && provider.defaultModel === "auto"
+    && JSON.stringify(provider.models) === JSON.stringify(["auto"]);
+}
+
 function isLegacyAntigravityStaticCatalog(provider: OcxProviderConfig): boolean {
   // A fingerprint of the shape version 1 actually shipped, NOT of the current registry.
   // These literals must stay frozen as the model list moves on: matching them is how we
@@ -1396,6 +1425,7 @@ function projectOAuthProviderReconciliation(config: OcxConfig): OAuthReconcilePr
   for (const [name, prov] of Object.entries(projected.providers)) {
     const beforeProvider = JSON.stringify(prov);
     const def = OAUTH_PROVIDERS[name];
+    if (isLegacyCodeBuddyOAuthStaticCatalog(name, prov)) prov.liveModels = true;
     if (name === "command-code" && isLegacyCommandCodeStaticCatalog(prov)) {
       // The former experimental preset was the exact three-model seed above. It was not a user
       // choice to disable discovery, so promote only that shape to the account live catalog.
@@ -1554,6 +1584,9 @@ export function upsertOAuthProvider(config: OcxConfig, provider: string): void {
   // The original Command Code seed was an implementation-owned static catalog, not an
   // operator opt-out. Promote that exact legacy shape when OAuth login refreshes the row.
   if (provider === "command-code" && existing && isLegacyCommandCodeStaticCatalog(existing)) {
+    next.liveModels = def.providerConfig.liveModels;
+  }
+  if (existing && isLegacyCodeBuddyOAuthStaticCatalog(provider, existing)) {
     next.liveModels = def.providerConfig.liveModels;
   }
   // OAuth-only providers must never retain credentials for a different auth mechanism.

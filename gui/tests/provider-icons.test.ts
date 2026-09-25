@@ -2,7 +2,8 @@ import { expect, test } from "bun:test";
 import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { PROVIDER_REGISTRY } from "../../src/providers/registry";
-import { providerIconSrc } from "../src/provider-icons";
+import { formatProviderDisplayName, providerIconSrc } from "../src/provider-icons";
+import { oauthLabel } from "../src/pages/providers-shared";
 
 const PUBLIC_DIR = join(import.meta.dir, "..", "public", "provider-icons");
 
@@ -56,6 +57,11 @@ test("every wired provider icon names a file that exists", () => {
     .filter(([, src]) => !existsSync(join(PUBLIC_DIR, src.split("/").pop()!)))
     .map(([id, src]) => `${id} -> ${src}`);
   expect(broken).toEqual([]);
+});
+
+test("CodeBuddy OAuth account rows use the provider's branded names", () => {
+  expect(oauthLabel("codebuddy-oauth")).toBe("CodeBuddy CN OAuth");
+  expect(oauthLabel("codebuddy-oauth-global")).toBe("CodeBuddy Global OAuth");
 });
 
 /*
@@ -116,4 +122,17 @@ test("CodeBuddy keeps the initials tile by decision, not by omission", () => {
   expect(providerIconSrc("codebuddy-cn")).toBeUndefined();
   expect(existsSync(join(PUBLIC_DIR, "codebuddy.svg"))).toBe(false);
   expect(existsSync(join(PUBLIC_DIR, "codebuddy-cn.svg"))).toBe(false);
+});
+
+test("CodeBuddy OAuth preset labels preserve canonical casing across regions", () => {
+  const labels = new Map(PROVIDER_REGISTRY.map(entry => [entry.id, entry.label]));
+  const t = (key: string) => key;
+
+  for (const [id, label] of [
+    ["codebuddy-oauth", "CodeBuddy CN OAuth"],
+    ["codebuddy-oauth-global", "CodeBuddy Global OAuth"],
+  ] as const) {
+    expect(labels.get(id)).toBe(label);
+    expect(formatProviderDisplayName(id, t)).toBe(label);
+  }
 });

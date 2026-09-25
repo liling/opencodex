@@ -104,6 +104,8 @@ runs inside the proxy, so it needs a running one.
 ```bash
 ocx login xai
 ocx login anthropic
+ocx login codebuddy-oauth         # CodeBuddy IOA, China
+ocx login codebuddy-oauth-global  # CodeBuddy IOA, Global
 ocx login orcarouter-oauth # browser consent + S256 PKCE
 ocx login orcarouter       # paste an existing API key
 ```

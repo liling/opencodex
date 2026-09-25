@@ -309,6 +309,7 @@
   "cline-writer.test.ts": "clients",
   "closed-pr-branch-cleanup.test.ts": "ci-workflows",
   "codebuddy-adapter.test.ts": "providers",
+  "codebuddy-oauth.test.ts": "oauth",
   "codebuddy-live-acceptance.test.ts": "providers",
   "codebuddy-mcp-server.test.ts": "providers",
   "codebuddy-protocol.test.ts": "providers",

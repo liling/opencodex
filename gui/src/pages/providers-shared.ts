@@ -53,6 +53,8 @@ const OAUTH_LABELS: Record<string, string> = {
   "meta-muse": "Meta Muse Code (CLI)",
   "google-antigravity": "Google Antigravity",
   "github-copilot": "GitHub Copilot",
+  "codebuddy-oauth": "CodeBuddy CN OAuth",
+  "codebuddy-oauth-global": "CodeBuddy Global OAuth",
   cursor: "Cursor",
   // Accounts rows title through this map, not `formatProviderDisplayName`.
   // Without an entry the row reads its raw id. `devin-cli` needs no entry:

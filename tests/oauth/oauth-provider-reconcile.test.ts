@@ -330,6 +330,49 @@ describe("OAuth provider reconciliation", () => {
     expect(config.providers["google-antigravity"].models).toHaveLength(7);
   });
 
+  test("promotes only the unchanged CodeBuddy OAuth auto seed to live discovery", () => {
+    const cn = structuredClone(OAUTH_PROVIDERS["codebuddy-oauth"].providerConfig);
+    const global = structuredClone(OAUTH_PROVIDERS["codebuddy-oauth-global"].providerConfig);
+    cn.liveModels = false;
+    global.liveModels = false;
+    const config = {
+      port: 10100,
+      defaultProvider: "codebuddy-oauth",
+      providers: { "codebuddy-oauth": cn, "codebuddy-oauth-global": global },
+    } satisfies OcxConfig;
+
+    expect(reconcileOAuthProviders(config, false)).toBe(true);
+    expect(config.providers["codebuddy-oauth"]?.liveModels).toBe(true);
+    expect(config.providers["codebuddy-oauth-global"]?.liveModels).toBe(true);
+
+    const customized = {
+      port: 10100,
+      defaultProvider: "codebuddy-oauth",
+      providers: {
+        "codebuddy-oauth": {
+          ...structuredClone(OAUTH_PROVIDERS["codebuddy-oauth"].providerConfig),
+          liveModels: false,
+          models: ["auto", "operator-model"],
+        },
+      },
+    } satisfies OcxConfig;
+    reconcileOAuthProviders(customized, false);
+    expect(customized.providers["codebuddy-oauth"]?.liveModels).toBe(false);
+
+    const loginLegacy = {
+      port: 10100,
+      defaultProvider: "codebuddy-oauth",
+      providers: {
+        "codebuddy-oauth": {
+          ...structuredClone(OAUTH_PROVIDERS["codebuddy-oauth"].providerConfig),
+          liveModels: false,
+        },
+      },
+    } satisfies OcxConfig;
+    upsertOAuthProvider(loginLegacy, "codebuddy-oauth");
+    expect(loginLegacy.providers["codebuddy-oauth"]?.liveModels).toBe(true);
+  });
+
   test("an explicit 3.7 default survives the 3.8 launch while its capabilities refresh", () => {
     // The earlier live-discovery case preserves an id outside the static seed. This case
     // preserves a still-listed choice during an additive catalog rollout, while refreshing

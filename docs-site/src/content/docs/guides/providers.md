@@ -878,6 +878,28 @@ OpenCodex provides official adapter support for Tencent Cloud's CodeBuddy Code C
 - **Tool Choice Enforcement:** When a request specifies `tool_choice: "required"` or selects a specific named tool, the bridge expects a tool call from the model. If the CLI completes the turn with plain text instead of capturing a tool call, OpenCodex fails closed with a 502 `tool_call_required` error rather than returning an invalid text completion.
 - **Governance Status:** Whether routing this vendor automation surface behind a proxy for a third-party agent satisfies CodeBuddy's acceptable-use terms is an open question flagged for maintainer security review (see the governance note in the provider registry entry). Treat this provider as pending that review, and keep the tool bridge's ownership boundary in mind: the nested CLI advertises tools but never executes them, and approval, sandboxing, and execution remain with the external Codex client.
 
+### CodeBuddy IOA OAuth (China & Global)
+
+The IOA OAuth presets use CodeBuddy's browser login and HTTP Chat Completions service. They are
+separate from the CodeBuddy Code CLI presets above and do not require the CLI or an API key.
+Sign in to the region you intend to use:
+
+```bash
+ocx login codebuddy-oauth         # China: copilot.tencent.com
+ocx login codebuddy-oauth-global  # Global: www.codebuddy.ai
+```
+
+The two logins keep separate account credentials. Select `codebuddy-oauth/auto` or
+`codebuddy-oauth-global/auto` as your model. OpenCodex discovers your account's available models
+from the regional `/v3/config` endpoint and lists only models that support tool calls; `auto`
+remains the fallback if discovery is unavailable. The Models page includes the point multiplier
+returned for each model (for example, `Model Name (x0.06)`); a zero multiplier is shown as
+`Free`. The multiplier refreshes with model discovery, while an operator's custom display name
+takes precedence. These presets use IOA and Chat Completions
+endpoints observed in the external OpenCode plugin, not the documented CodeBuddy Code CLI API.
+Those endpoints may change, and vendor authorization for this proxy use has not been confirmed;
+the implementation needs security review before upstream merge.
+
 ### Official Qoder CLI (Global & CN)
 
 OpenCodex provides official adapter support for Qoder through the `qoder` (Global) and `qoder-cn` (China) presets. Both use a user-supplied Personal Access Token and the vendor's headless CLI; OpenCodex never reads Qoder Desktop sessions, browser cookies, refresh tokens, or private console APIs.

@@ -513,3 +513,6 @@ opencodex 会以明确的错误拒绝结构化输出请求（`text.format`），
 ## 任意 OpenAI 兼容端点
 
 如果某个提供商使用 Chat Completions，`openai-chat` adapter 即可处理它——在仪表盘中选择 **Custom**，或在 `ocx init` 中选择 `custom` 并输入基础 URL。每个提供商字段（`headers`、`noReasoningModels`、`noVisionModels`、`models`……）请参见 [配置参考](/zh-cn/reference/configuration/)。
+# CodeBuddy IOA OAuth（中国与全球）
+
+CodeBuddy OAuth 会按区域从 `/v3/config` 发现当前账号可用的模型，并且只列出支持工具调用的模型；发现不可用时仍以 `auto` 作为 fallback。模型列表会显示接口返回的 point 倍率，例如 `模型名称 (x0.06)`；倍率为 0 时显示 `Free`。倍率随模型发现刷新，手动设置的模型显示名称仍优先显示。
