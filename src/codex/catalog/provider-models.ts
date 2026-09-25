@@ -56,6 +56,7 @@ import { cursorLiveRosterScope, recordLiveCursorClaudeModels, recordLiveCursorMa
 import { fetchQoderModels } from "../../adapters/qoder/live-models";
 import { resolveQoderProfile } from "../../adapters/qoder/profiles";
 import { fetchDevinUsableModels } from "../../adapters/devin/live-models";
+import { codeBuddyOAuthTokenFingerprint, fetchCodeBuddyOAuthModels } from "../../providers/codebuddy-oauth-model-discovery";
 import { resolveDevinApiBaseUrl } from "../../oauth/devin/api-base";
 import { isCanonicalOpenAiForwardProvider, OPENAI_API_PROVIDER_ID, OPENAI_CODEX_PROVIDER_ID } from "../../providers/openai-tiers";
 import {
@@ -446,6 +447,33 @@ export async function fetchProviderModelsWithAuth(
     // configured static catalog so the GUI Models tab / rail counts are not empty —
     // matching Cursor's !apiKey → configured degradation and fetch-failure fallback.
     return observed(configured, "degraded");
+  }
+  if (prov.adapter === "codebuddy-oauth") {
+    if (!apiKey) return observed(configured, "degraded");
+    const authorityIdentity = codeBuddyOAuthTokenFingerprint(apiKey);
+    const cached = getFreshCached(name, ttlMs, Date.now(), authorityIdentity);
+    if (cached) return observed(withConfiguredRetention(applyConfigHintsToCachedModels(name, prov, cached, contextCap, metadataModelIdCaseFold, captured.effectiveAlias)), "authoritative");
+    if (isModelsFetchCoolingDown(name, undefined, undefined, authorityIdentity)) {
+      const stale = getStaleCached(name, authorityIdentity);
+      return observed(withConfiguredRetention(stale ? applyConfigHintsToCachedModels(name, prov, stale, contextCap, metadataModelIdCaseFold, captured.effectiveAlias) : configured), "degraded");
+    }
+    const live = await fetchCodeBuddyOAuthModels(name, prov, apiKey);
+    if (live.ok) {
+      const models = live.models.map(model => applyProviderConfigHints(name, prov, {
+        ...model,
+        provider: name,
+      }, contextCap, metadataModelIdCaseFold, captured.effectiveAlias));
+      const forCache = withConfiguredRetention(models, { retainComboTargets: false });
+      if (!setCached(name, forCache, Date.now(), cacheGeneration, authorityIdentity)) return observed(withConfiguredRetention(configured), "degraded");
+      markProviderDiscoveryOk(name, models.length);
+      return observed(withConfiguredRetention(forCache, { warnDrops: true }), "authoritative");
+    }
+    if (isCurrentCacheGeneration()) {
+      markModelsFetchFailure(name, undefined, authorityIdentity);
+      markProviderDiscoveryFailed(name, { reason: "invalid_response" });
+    }
+    const stale = getStaleCached(name, authorityIdentity);
+    return observed(withConfiguredRetention(stale ? applyConfigHintsToCachedModels(name, prov, stale, contextCap, metadataModelIdCaseFold, captured.effectiveAlias) : configured), "degraded");
   }
   const cloudCodeAssist = effectiveGoogleMode(name, prov) === "cloud-code-assist";
   const project = prov.project ?? auth.oauthProjectId;

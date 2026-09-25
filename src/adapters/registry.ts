@@ -4,6 +4,7 @@ import type { ProviderAdapter } from "./base";
 import { createClaudeCliAdapter } from "./claude-cli/adapter";
 import { withClinePassDeepSeekV4ToolReplayCompatibility } from "./cline-pass-deepseek-v4-tool-replay";
 import { createCodeBuddyAdapter } from "./codebuddy/adapter";
+import { createCodeBuddyOAuthAdapter } from "./codebuddy-oauth";
 import { createQoderAdapter } from "./qoder/adapter";
 import { createCommandCodeAdapter } from "./command-code";
 import { createCursorAdapter } from "./cursor";
@@ -74,6 +75,11 @@ export const ADAPTER_REGISTRY = {
     wire: "codebuddy",
     mutation: "codex-owned",
     create: (provider: OcxProviderConfig, _context: AdapterFactoryContext) => createCodeBuddyAdapter(provider),
+  },
+  "codebuddy-oauth": {
+    contractParent: "openai-chat",
+    create: (provider: OcxProviderConfig, context: AdapterFactoryContext) =>
+      createCodeBuddyOAuthAdapter(provider, context.providerId ?? ""),
   },
   "command-code": {
     wire: "command-code",

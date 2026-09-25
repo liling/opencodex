@@ -1363,6 +1363,34 @@ export const PROVIDER_REGISTRY_EXTENDED: readonly ProviderRegistryEntry[] = [
     note: "Official Qoder CN CLI using QODERCN_PERSONAL_ACCESS_TOKEN. Models are discovered per account with `qodercn --list-models`; the verified roster is a degraded fallback. The CLI runs single-turn with tools, MCP, settings hooks, and session persistence disabled. Requires `npm install -g @qodercn-ai/qoderclicn`.",
   },
   {
+    id: "codebuddy-oauth",
+    label: "CodeBuddy CN OAuth",
+    adapter: "codebuddy-oauth",
+    baseUrl: "https://copilot.tencent.com",
+    chatCompletionsPath: "/v2/chat/completions",
+    authKind: "oauth",
+    dashboardPreset: true,
+    defaultModel: "auto",
+    models: ["auto"],
+    liveModels: true,
+    modelDiscovery: { url: "https://copilot.tencent.com/v3/config" },
+    note: "Experimental unofficial IOA OAuth and HTTP inference path based on a third-party implementation; endpoint stability and CodeBuddy authorization for proxy use are unverified. Requires primary-source endpoint evidence and explicit maintainer security review before upstream merge.",
+  },
+  {
+    id: "codebuddy-oauth-global",
+    label: "CodeBuddy Global OAuth",
+    adapter: "codebuddy-oauth",
+    baseUrl: "https://www.codebuddy.ai",
+    chatCompletionsPath: "/v2/chat/completions",
+    authKind: "oauth",
+    dashboardPreset: true,
+    defaultModel: "auto",
+    models: ["auto"],
+    liveModels: true,
+    modelDiscovery: { url: "https://www.codebuddy.ai/v3/config" },
+    note: "Experimental unofficial IOA OAuth and HTTP inference path based on a third-party implementation; endpoint stability and CodeBuddy authorization for proxy use are unverified. Requires primary-source endpoint evidence and explicit maintainer security review before upstream merge.",
+  },
+  {
     // Official CodeBuddy Code CLI provider (Tencent Cloud), GLOBAL / `public` environment.
     // Transport is the vendor-documented headless CLI automation surface
     // (`codebuddy -p --output-format stream-json --tools ""`) authenticated with the official

@@ -38,7 +38,9 @@ function providerFixture(adapterId: string, wire: AdapterWire): OcxProviderConfi
     cursor: "https://api2.cursor.sh",
     codebuddy: "https://www.codebuddy.ai",
   };
-  const baseUrl = adapterId === "mimo-free"
+  const baseUrl = adapterId === "codebuddy-oauth"
+    ? "https://copilot.tencent.com"
+    : adapterId === "mimo-free"
     ? "https://api.xiaomimimo.com/api/free-ai/openai/chat"
     : adapterId === "azure" || adapterId === "azure-openai"
       ? "https://example.openai.azure.com/openai/v1"

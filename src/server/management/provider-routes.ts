@@ -46,6 +46,7 @@ import { fetchCursorUsableModels } from "../../adapters/cursor/live-models";
 import { fetchDevinUsableModels } from "../../adapters/devin/live-models";
 import { resolveDevinApiBaseUrl } from "../../oauth/devin/api-base";
 import { fetchQoderModels } from "../../adapters/qoder/live-models";
+import { fetchCodeBuddyOAuthModels } from "../../providers/codebuddy-oauth-model-discovery";
 import { resolveQoderProfile } from "../../adapters/qoder/profiles";
 import { parseAntigravityAvailableModels } from "../../providers/antigravity-models";
 import { enrichProviderFromCatalog, listKeyLoginProviders } from "../../oauth/key-providers";
@@ -1691,6 +1692,13 @@ export async function handleProviderRoutes(ctx: ManagementContext): Promise<Resp
         models: live.models.length,
         message: `Connected. ${live.models.length} models.`,
       });
+    }
+    if (prov.adapter === "codebuddy-oauth") {
+      const started = Date.now();
+      const live = await fetchCodeBuddyOAuthModels(name, prov, apiKey ?? "");
+      const latencyMs = Date.now() - started;
+      if (!live.ok) return jsonResponse({ ok: false, latencyMs, error: `CodeBuddy model discovery failed (${live.error})` });
+      return jsonResponse({ ok: true, latencyMs, models: live.models.length, message: `Connected. ${live.models.length} models.` });
     }
     const project = prov.project ?? snapshot?.projectId;
     if (antigravity && !project) {

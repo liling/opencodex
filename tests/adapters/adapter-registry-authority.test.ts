@@ -11,6 +11,7 @@ import { withTestTranslatorBudget } from "../helpers/translator-budget";
 
 const EXPECTED_ADAPTER_NAMES = {
   codebuddy: "codebuddy",
+  "codebuddy-oauth": "codebuddy-oauth",
   "command-code": "command-code",
   "openai-chat": "openai-chat",
   "ollama-native": "ollama-native",
@@ -36,6 +37,8 @@ function provider(adapter: string): OcxProviderConfig {
       ? "https://api.xiaomimimo.com/api/free-ai/openai/chat"
       : adapter === "codebuddy"
         ? "https://www.codebuddy.ai"
+        : adapter === "codebuddy-oauth"
+          ? "https://copilot.tencent.com"
         : adapter === "qoder"
           ? "https://qoder.com"
         // ollama-native refuses a bare /v1 path on a host it does not recognise, rather than
@@ -81,6 +84,7 @@ describe("adapter registry authority", () => {
     expect(effectiveAdapterContract("azure").wire).toBe("openai-responses");
     expect(effectiveAdapterContract("azure-openai").wire).toBe("openai-responses");
     expect(effectiveAdapterContract("mimo-free").wire).toBe("openai-chat");
+    expect(effectiveAdapterContract("codebuddy-oauth").wire).toBe("openai-chat");
     expect(effectiveAdapterContract("cursor").mutation).toBe("codex-owned-with-gated-native-fallback");
   });
 
@@ -89,6 +93,27 @@ describe("adapter registry authority", () => {
       expect(createRegisteredAdapter(provider(adapterId)).name, adapterId).toBe(expectedName);
       expect(resolveAdapter(provider(adapterId)).name, adapterId).toBe(expectedName);
     }
+  });
+
+  test("CodeBuddy OAuth is registry-constructible without context and pins bearer destinations by region", async () => {
+    const token = `eyJhbGciOiJub25lIn0.${Buffer.from(JSON.stringify({ user_id: "u1", tenant_id: "t1" })).toString("base64url")}.x`;
+    const cnConfig = {
+      ...provider("codebuddy-oauth"), authMode: "oauth" as const, apiKey: token,
+      baseUrl: "https://attacker.invalid", headers: { Authorization: "Bearer attacker", "X-Domain": "wrong" },
+    };
+    expect(createRegisteredAdapter(provider("codebuddy-oauth")).name).toBe("codebuddy-oauth");
+    const adapter = createRegisteredAdapter(cnConfig, { providerId: "codebuddy-oauth" });
+    const request = await withTestTranslatorBudget(adapter).buildRequest(ANTHROPIC_CACHE_REQUEST);
+    expect(request.url).toBe("https://copilot.tencent.com/v2/chat/completions");
+    expect(request.headers.Authorization).toBe(`Bearer ${token}`);
+    expect(request.headers["X-Domain"]).toBe("www.codebuddy.cn");
+    expect(request.headers["X-Tenant-Id"]).toBe("t1");
+    expect(request.headers["X-IDE-Name"]).toBe("VSCode");
+    expect(request.headers["X-Product-Version"]).toBe("4.9.29177644");
+    expect(request.headers["X-Env-ID"]).toBe("production");
+    expect(request.headers["X-IDE-Plugin-Version"]).toBeUndefined();
+    expect(() => createRegisteredAdapter({ ...cnConfig, baseUrl: "https://www.codebuddy.ai" }, { providerId: "codebuddy-oauth" }))
+      .toThrow("CodeBuddy OAuth region mismatch");
   });
 
   test("forwards Anthropic cache retention through registry and server resolution", async () => {

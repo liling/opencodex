@@ -176,6 +176,8 @@ const PROVIDER_DISPLAY_NAMES: Record<string, string> = {
   "tencent-coding-plan": "Tencent Cloud Coding Plan",
   codebuddy: "CodeBuddy",
   "codebuddy-cn": "CodeBuddy CN",
+  "codebuddy-oauth": "CodeBuddy CN OAuth",
+  "codebuddy-oauth-global": "CodeBuddy Global OAuth",
   qoder: "Qoder",
   "qoder-cn": "Qoder CN",
   "vercel-ai-gateway": "Vercel AI Gateway",

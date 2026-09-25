@@ -1295,6 +1295,17 @@ describe("provider registry parity", () => {
   });
 
   test("OAuth provider configs use canonical registry values", () => {
+    for (const [id, baseUrl] of [
+      ["codebuddy-oauth", "https://copilot.tencent.com"],
+      ["codebuddy-oauth-global", "https://www.codebuddy.ai"],
+    ] as const) {
+      expect(OAUTH_PROVIDERS[id].providerConfig).toMatchObject({
+        adapter: "codebuddy-oauth", baseUrl, authMode: "oauth",
+        chatCompletionsPath: "/v2/chat/completions", defaultModel: "auto", models: ["auto"],
+      });
+      expect(PROVIDER_REGISTRY.find(entry => entry.id === id)?.dashboardPreset).toBe(true);
+      expect(deriveProviderPresets().some(preset => preset.id === id)).toBe(true);
+    }
     expect(OAUTH_PROVIDERS.kimi.providerConfig.baseUrl).toBe("https://api.kimi.com/coding/v1");
     expect(OAUTH_PROVIDERS.anthropic.providerConfig.defaultModel).toBe("claude-sonnet-5");
     expect(OAUTH_PROVIDERS.anthropic.providerConfig.models).toContain("claude-sonnet-5");

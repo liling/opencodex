@@ -1,5 +1,29 @@
 # Providers And Adapters
 
+## CodeBuddy IOA OAuth identity and destination
+
+`codebuddy-oauth` (China) and `codebuddy-oauth-global` use separate OAuth account
+slots and fixed HTTPS destinations. Their browser IOA login, token polling, and
+refresh are owned by `src/oauth/codebuddy.ts`; the shared OAuth store owns the
+credentials and account selection. Their `codebuddy-oauth` adapter inherits the
+OpenAI Chat wire and adds CodeBuddy's request metadata at the outbound boundary.
+The existing `codebuddy` and `codebuddy-cn` entries continue to use the vendor
+CLI and API keys. No credential crosses between these four provider identities.
+The OAuth entries retain `auto` as the static fallback and discover authenticated
+models from their region's fixed `/v3/config` endpoint. The dedicated parser merges
+`data.models` with `data.agents.craft.models`, keeps only `supportsToolCall` rows,
+and bounds JSON ingestion with the shared discovery ceiling. Model names include the
+upstream `credits` point multiplier when present (`x0.06`, or `Free` for zero); the
+value is refreshed with live discovery, while configured model display names take
+precedence. The catalog cache is scoped to a SHA-256 token fingerprint. Reconciliation
+promotes only the exact former `liveModels: false` / `models: ["auto"]` OAuth seed,
+leaving customized static configs alone.
+The registry marks this path experimental;
+its endpoint contract and CodeBuddy authorization for proxy use are not verified
+from primary sources, so upstream integration requires security review.
+
+> Decision record: [ADR-5725](decisions/ADR-5725-codebuddy-oauth-identity.md)
+
 The opt-in `inlineThinkTagModels` list follows static-policy override and model-rename rules;
 shared Kiro/Chat splitting and raw display follow [Chat compatibility](providers/chat-compat.md#inline-think-tag-recovery).
 
