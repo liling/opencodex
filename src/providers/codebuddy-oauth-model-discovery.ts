@@ -67,8 +67,11 @@ function codeBuddyDisplayName(item: Record<string, unknown>, id: string): string
   const name = typeof item.name === "string" && item.name.trim().length > 0 && item.name.length <= 256
     ? item.name.trim() : id;
   const credits = item.credits;
-  if (typeof credits !== "number" || !Number.isFinite(credits) || credits < 0) return name === id ? undefined : name;
-  return credits === 0 ? `${name} (Free)` : `${name} (x${credits})`;
+  const creditText = typeof credits === "number" && Number.isFinite(credits) && credits >= 0
+    ? String(credits)
+    : typeof credits === "string" ? credits.trim().match(/^x?(\d+(?:\.\d+)?)$/i)?.[1] : undefined;
+  if (creditText === undefined) return name === id ? undefined : name;
+  return Number(creditText) === 0 ? `${name} (Free)` : `${name} (x${creditText})`;
 }
 
 export function parseCodeBuddyOAuthModels(value: unknown): CodeBuddyOAuthModel[] | null {

@@ -26,8 +26,8 @@ describe("CodeBuddy OAuth", () => {
     const parsed = parseCodeBuddyOAuthModelIds({ code: 0, data: {
       models: [
         { id: "chat-only", supportsToolCall: false },
-        { id: "shared", name: "Shared Model", credits: 0.06, supportsToolCall: true },
-        { id: "craft-model", name: "Craft Model", credits: 0, supportsToolCall: true },
+        { id: "shared", name: "Shared Model", credits: "x0.06", supportsToolCall: true },
+        { id: "craft-model", name: "Craft Model", credits: "x0.00", supportsToolCall: true },
         { id: "not-in-craft", supportsToolCall: true },
       ],
       agents: [{ name: "chat", models: ["chat-only"] }, { name: "craft", models: ["shared", "craft-model", "chat-only", "shared", "unknown"] }],
@@ -35,8 +35,8 @@ describe("CodeBuddy OAuth", () => {
     expect(parsed).toEqual(["shared", "craft-model"]);
     expect(parseCodeBuddyOAuthModels({ code: 0, data: {
       models: [
-        { id: "priced", name: "Price Model", credits: 0.78, supportsToolCall: true },
-        { id: "free", name: "Free Model", credits: 0, supportsToolCall: true },
+        { id: "priced", name: "Price Model", credits: "x0.78", supportsToolCall: true },
+        { id: "free", name: "Free Model", credits: "x0.00", supportsToolCall: true },
         { id: "unknown-price", name: "Unknown Price", supportsToolCall: true },
       ],
       agents: [{ name: "craft", models: ["priced", "free", "unknown-price"] }],
@@ -70,7 +70,7 @@ describe("CodeBuddy OAuth", () => {
       fetch: async (input: RequestInfo | URL, init?: RequestInit) => {
         requestedUrl = String(input);
         requestHeaders = new Headers(init?.headers);
-        return json({ code: 0, data: { models: [{ id: "tool-model", name: "Tool Model", credits: 0.06, supportsToolCall: true }], agents: [{ name: "craft", models: ["tool-model"] }] } });
+        return json({ code: 0, data: { models: [{ id: "tool-model", name: "Tool Model", credits: "x0.06", supportsToolCall: true }], agents: [{ name: "craft", models: ["tool-model"] }] } });
       },
     } as never;
     const result = await fetchCodeBuddyOAuthModels("codebuddy-oauth", provider, token);
@@ -92,7 +92,7 @@ describe("CodeBuddy OAuth", () => {
       authMode: "oauth",
       fetch: async () => json({ code: 0, data: {
         models: [
-          { id: "craft-one", name: "Craft One", credits: 0.78, supportsToolCall: true },
+          { id: "craft-one", name: "Craft One", credits: "x0.78", supportsToolCall: true },
           { id: "chat-only", supportsToolCall: false },
         ],
         agents: [{ name: "chat", models: ["chat-only"] }, { name: "craft", models: ["craft-one"] }],
