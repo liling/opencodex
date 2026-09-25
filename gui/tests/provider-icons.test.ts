@@ -3,6 +3,7 @@ import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { PROVIDER_REGISTRY } from "../../src/providers/registry";
 import { formatProviderDisplayName, providerIconSrc } from "../src/provider-icons";
+import { oauthLabel } from "../src/pages/providers-shared";
 
 const PUBLIC_DIR = join(import.meta.dir, "..", "public", "provider-icons");
 
@@ -56,6 +57,11 @@ test("every wired provider icon names a file that exists", () => {
     .filter(([, src]) => !existsSync(join(PUBLIC_DIR, src.split("/").pop()!)))
     .map(([id, src]) => `${id} -> ${src}`);
   expect(broken).toEqual([]);
+});
+
+test("CodeBuddy OAuth account rows use the provider's branded names", () => {
+  expect(oauthLabel("codebuddy-oauth")).toBe("CodeBuddy CN OAuth");
+  expect(oauthLabel("codebuddy-oauth-global")).toBe("CodeBuddy Global OAuth");
 });
 
 /*
