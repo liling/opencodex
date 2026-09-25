@@ -51,6 +51,24 @@ describe("CodeBuddy OAuth", () => {
     expect(parseCodeBuddyOAuthModelIds({ code: 0, data: { models: [], agents: { craft: { models: [] } } } })).toBeNull();
   });
 
+  test("live model image capability follows the upstream supportsImages field", () => {
+    const payload = { code: 0, data: {
+      models: [
+        { id: "arbitrary-vision-a", supportsToolCall: true, supportsImages: true },
+        { id: "arbitrary-text-only", supportsToolCall: true, supportsImages: false },
+        { id: "arbitrary-unknown", supportsToolCall: true },
+        { id: "arbitrary-invalid", supportsToolCall: true, supportsImages: "true" },
+      ],
+      agents: [{ name: "craft", models: ["arbitrary-vision-a", "arbitrary-text-only", "arbitrary-unknown", "arbitrary-invalid"] }],
+    } };
+    expect(parseCodeBuddyOAuthModels(payload)).toEqual([
+      { id: "arbitrary-vision-a", inputModalities: ["text", "image"] },
+      { id: "arbitrary-text-only", inputModalities: ["text"] },
+      { id: "arbitrary-unknown" },
+      { id: "arbitrary-invalid" },
+    ]);
+  });
+
   test("both regional presets opt into fixed-host live discovery with auto fallback", () => {
     expect(getProviderRegistryEntry("codebuddy-oauth")).toMatchObject({
       liveModels: true, models: ["auto"], modelDiscovery: { url: "https://copilot.tencent.com/v3/config" },
@@ -92,17 +110,19 @@ describe("CodeBuddy OAuth", () => {
       authMode: "oauth",
       fetch: async () => json({ code: 0, data: {
         models: [
-          { id: "craft-one", name: "Craft One", credits: "x0.78", supportsToolCall: true },
+          { id: "arbitrary-vision-model", name: "Vision Model", credits: "x0.78", supportsToolCall: true, supportsImages: true },
           { id: "chat-only", supportsToolCall: false },
         ],
-        agents: [{ name: "chat", models: ["chat-only"] }, { name: "craft", models: ["craft-one"] }],
+        agents: [{ name: "chat", models: ["chat-only"] }, { name: "craft", models: ["arbitrary-vision-model"] }],
       } }),
     } as never;
     const auth = { kind: "observed", resolve: () => ({ apiKey: token, observed: true }) } as const;
     const captured = captureProviderGather("codebuddy-oauth", provider, auth);
     const discovered = await fetchProviderModelsWithAuth(captured, 60_000, undefined, auth);
-    expect(discovered.models.map(model => model.id)).toContain("craft-one");
-    expect(discovered.models.find(model => model.id === "craft-one")?.displayName).toBe("Craft One (x0.78)");
+    expect(discovered.models.map(model => model.id)).toContain("arbitrary-vision-model");
+    expect(discovered.models.find(model => model.id === "arbitrary-vision-model")).toMatchObject({
+      displayName: "Vision Model (x0.78)", inputModalities: ["text", "image"],
+    });
     expect(discovered.models.map(model => model.id)).not.toContain("chat-only");
     expect(discovered.models.map(model => model.id)).not.toContain("auto");
     expect(discovered.outcome.state).toBe("authoritative");

@@ -61,6 +61,7 @@ function discoveryHeaders(token: string, domain: string): Headers {
 export interface CodeBuddyOAuthModel {
   id: string;
   displayName?: string;
+  inputModalities?: string[];
 }
 
 function codeBuddyDisplayName(item: Record<string, unknown>, id: string): string | undefined {
@@ -93,9 +94,16 @@ export function parseCodeBuddyOAuthModels(value: unknown): CodeBuddyOAuthModel[]
     const id = item.id;
     if (!isValidModelDiscoveryModelId(id)) continue;
     const displayName = codeBuddyDisplayName(item, id);
+    const inputModalities = typeof item.supportsImages === "boolean"
+      ? item.supportsImages ? ["text", "image"] : ["text"]
+      : undefined;
     supportedById.set(id, supportedById.has(id) ? null : {
       supported: item.supportsToolCall === true,
-      model: { id, ...(displayName ? { displayName } : {}) },
+      model: {
+        id,
+        ...(displayName ? { displayName } : {}),
+        ...(inputModalities ? { inputModalities } : {}),
+      },
     });
   }
   const craft = agents.find(agent => agent && typeof agent === "object" && !Array.isArray(agent)

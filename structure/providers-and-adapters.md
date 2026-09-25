@@ -18,6 +18,10 @@ value is refreshed with live discovery, while configured model display names tak
 precedence. The catalog cache is scoped to a SHA-256 token fingerprint. Reconciliation
 promotes only the exact former `liveModels: false` / `models: ["auto"]` OAuth seed,
 leaving customized static configs alone.
+Live model rows map the upstream `supportsImages` boolean to input modalities:
+`true` declares text and image, `false` declares text only, and a missing or
+non-boolean value leaves modalities unknown. This mapping applies to both regions
+and does not infer capabilities from model ids.
 The registry marks this path experimental;
 its endpoint contract and CodeBuddy authorization for proxy use are not verified
 from primary sources, so upstream integration requires security review.
